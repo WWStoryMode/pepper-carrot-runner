@@ -22,5 +22,15 @@ export const COLORS = {
   skillBlue: '#26CDFF',
 } as const;
 
+const params = new URLSearchParams(globalThis.location?.search ?? '');
+
 /** `?debug=1` enables the debug overlay introduced in M1. */
-export const DEBUG = new URLSearchParams(globalThis.location?.search ?? '').get('debug') === '1';
+export const DEBUG = params.get('debug') === '1';
+
+/**
+ * `?autopilot=1` lets the bot from `sim/autopilot` play.
+ *
+ * A development affordance for watching a course run start to finish without
+ * holding the jump key, and for eyeballing generated chunk sequences in M3.
+ */
+export const AUTOPILOT = params.get('autopilot') === '1';
