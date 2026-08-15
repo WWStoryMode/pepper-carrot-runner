@@ -1,0 +1,25 @@
+{
+  "name": "pepper-carrot-runner",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An endless runner set in the Pepper&Carrot universe, built with Phaser 4 + TypeScript.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "phaser": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
+}
