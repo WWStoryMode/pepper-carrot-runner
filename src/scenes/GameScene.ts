@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
-import { FEET_TO_SPRITE_ORIGIN, PLAYER_HEIGHT, PLAYER_SCREEN_X, PLAYER_WIDTH } from '@/config/constants';
-import { AUTOPILOT, COLORS, DEBUG } from '@/config/display';
+import { PLAYER_SCREEN_X } from '@/config/constants';
+import { AUTOPILOT, COLORS, DEBUG, START_X } from '@/config/display';
 import { shouldJump } from '@/sim/autopilot';
 import { DebugOverlay } from '@/debug/DebugOverlay';
+import { PlayerView } from '@/entities/PlayerView';
 import { TEST_LEVEL, TEST_LEVEL_END, TEST_LEVEL_START } from '@/levels/testLevel';
+import { BACKGROUND_TEXTURE } from '@/scenes/PreloadScene';
 import { FixedStepper } from '@/sim/FixedStepper';
 import { Runner } from '@/sim/Runner';
 import type { RunnerSnapshot } from '@/sim/types';
@@ -11,20 +13,38 @@ import type { RunnerSnapshot } from '@/sim/types';
 /** Screen height at which the player's feet sit before the camera starts to follow. */
 const FEET_SCREEN_Y = 520;
 
-/** Vertical slack before the camera reacts, so ordinary jumps don't drag the world. */
-const CAMERA_DEADZONE = 150;
+/**
+ * How far the player may rise above the camera's anchor before it gives chase.
+ * A full double jump reaches ~650 px, so this keeps them on screen without the
+ * world lurching during every ordinary hop.
+ */
+const CAMERA_MAX_ABOVE = 380;
+
+/** The same, downward, so a long fall does not outrun the view. */
+const CAMERA_MAX_BELOW = 260;
 
 /** Exponential follow rate; higher snaps faster. */
 const CAMERA_STIFFNESS = 7;
 
+/**
+ * Parallax rate for the wall behind the level.
+ *
+ * The original had none: `Background.diffX` was hardcoded to 0, so the backdrop
+ * scrolled locked to the world.
+ */
+const BACKGROUND_PARALLAX = 0.35;
+
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 /**
- * M1 gameplay scene.
+ * Gameplay scene.
  *
- * Everything here is greybox: coloured rectangles standing in for art so the
- * jump arc and the one-way platforms can be judged on their own. M2 swaps the
- * rectangles for Pepper and Carrot without touching `src/sim/`.
+ * Pepper and Carrot are drawn from the atlas; platforms are still grey boxes,
+ * because their real appearance comes from TMX tile layers in M3 and inventing
+ * placeholder tile art now would only be thrown away.
+ *
+ * The scene reads `src/sim/` and never writes to it, which is what lets the
+ * physics be tested without a browser.
  */
 export class GameScene extends Phaser.Scene {
   private runner!: Runner;
@@ -32,9 +52,12 @@ export class GameScene extends Phaser.Scene {
   private shapes!: Phaser.GameObjects.Graphics;
   private overlay!: DebugOverlay;
   private banner!: Phaser.GameObjects.Text;
+  private player!: PlayerView;
+  private backdrop!: Phaser.GameObjects.TileSprite;
 
   private previous!: RunnerSnapshot;
   private cameraFocusY = 0;
+  private cameraAnchorY = 0;
 
   // Measured per jump so the debug readout can confirm the arc against the
   // 325 px / 0.85 s figures the original produces.
@@ -50,9 +73,21 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor(COLORS.black);
 
+    this.backdrop = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, BACKGROUND_TEXTURE)
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(-100)
+      // The source tile is only 200 px. Scaling it up and darkening it stops
+      // the repeat from reading as wallpaper and keeps the characters forward.
+      .setTileScale(2.6)
+      .setTint(0x8b83a6);
+
     this.runner = new Runner();
     this.stepper = new FixedStepper();
     this.shapes = this.add.graphics();
+    this.shapes.setDepth(0);
+    this.player = new PlayerView(this);
     this.overlay = new DebugOverlay(this, DEBUG);
 
     this.banner = this.add
@@ -93,10 +128,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    this.runner.reset(TEST_LEVEL_START.x, TEST_LEVEL_START.y);
+    this.runner.reset(START_X ?? TEST_LEVEL_START.x, TEST_LEVEL_START.y);
     this.stepper.reset();
     this.previous = this.runner.snapshot();
     this.cameraFocusY = this.runner.y;
+    this.cameraAnchorY = this.runner.y;
     this.peakHeight = 0;
     this.lastAirtime = 0;
     this.airtime = 0;
@@ -124,7 +160,10 @@ export class GameScene extends Phaser.Scene {
     const worldY = lerp(this.previous.y, current.y, alpha);
 
     this.updateCamera(worldX, worldY, dtSeconds);
-    this.render(worldX, worldY);
+    this.renderPlatforms();
+
+    this.player.update(worldX, worldY, current.state);
+    this.player.setDead(this.runner.isDead);
 
     this.overlay.draw(
       {
@@ -164,10 +203,22 @@ export class GameScene extends Phaser.Scene {
     if (gained > this.peakHeight) this.peakHeight = gained;
   }
 
+  /**
+   * Follow the ground the player is running on, not the player.
+   *
+   * Anchoring to the last grounded height means jumps don't move the world at
+   * all — only changing altitude does. An earlier version tracked the player
+   * through a symmetric deadzone, which ratcheted: the anchor crept up with
+   * each jump and never came back down, leaving the floor sinking towards the
+   * bottom of the screen over a run.
+   */
   private updateCamera(worldX: number, worldY: number, dt: number): void {
-    let target = this.cameraFocusY;
-    if (worldY > this.cameraFocusY + CAMERA_DEADZONE) target = worldY - CAMERA_DEADZONE;
-    else if (worldY < this.cameraFocusY - CAMERA_DEADZONE) target = worldY + CAMERA_DEADZONE;
+    if (this.runner.isGrounded) this.cameraAnchorY = worldY;
+
+    // Chase only if the player is about to leave the view.
+    let target = this.cameraAnchorY;
+    if (worldY > target + CAMERA_MAX_ABOVE) target = worldY - CAMERA_MAX_ABOVE;
+    else if (worldY < target - CAMERA_MAX_BELOW) target = worldY + CAMERA_MAX_BELOW;
 
     // Frame-rate independent exponential smoothing.
     this.cameraFocusY = lerp(this.cameraFocusY, target, 1 - Math.exp(-CAMERA_STIFFNESS * dt));
@@ -175,9 +226,17 @@ export class GameScene extends Phaser.Scene {
     const camera = this.cameras.main;
     camera.scrollX = worldX - PLAYER_SCREEN_X;
     camera.scrollY = -this.cameraFocusY - FEET_SCREEN_Y;
+
+    this.backdrop.tilePositionX = camera.scrollX * BACKGROUND_PARALLAX;
+    this.backdrop.tilePositionY = camera.scrollY * BACKGROUND_PARALLAX;
   }
 
-  private render(worldX: number, worldY: number): void {
+  /**
+   * Platforms stay grey-boxed. The real tiles are painted from TMX layers in
+   * M3, and inventing placeholder tile art now would only have to be thrown
+   * away.
+   */
+  private renderPlatforms(): void {
     const g = this.shapes;
     g.clear();
 
@@ -190,20 +249,11 @@ export class GameScene extends Phaser.Scene {
 
       // Y-up world → Y-down screen.
       const top = -platform.y;
-      g.fillStyle(0x4c2920, 1);
+      g.fillStyle(0x3b2440, 1);
       g.fillRect(platform.x, top, platform.width, platform.height);
-      g.fillStyle(0xd0a381, 1);
-      g.fillRect(platform.x, top, platform.width, 10);
+      g.fillStyle(0x8e6a8a, 1);
+      g.fillRect(platform.x, top, platform.width, 8);
     }
-
-    // The runner: a rectangle standing on its feet.
-    const bodyTop = -worldY - PLAYER_HEIGHT;
-    g.fillStyle(this.runner.isDead ? 0x7d7d7d : 0xffac0e, 1);
-    g.fillRect(worldX - PLAYER_WIDTH / 2, bodyTop, PLAYER_WIDTH, PLAYER_HEIGHT);
-
-    // A notch marking where the sprite origin will sit once art arrives in M2.
-    g.fillStyle(0x110410, 1);
-    g.fillRect(worldX - 4, -worldY - FEET_TO_SPRITE_ORIGIN, 8, 4);
   }
 
   private updateBanner(): void {

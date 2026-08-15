@@ -34,3 +34,17 @@ export const DEBUG = params.get('debug') === '1';
  * holding the jump key, and for eyeballing generated chunk sequences in M3.
  */
 export const AUTOPILOT = params.get('autopilot') === '1';
+
+/**
+ * `?x=<worldX>` starts the run at a given position.
+ *
+ * Saves replaying the whole course to look at one section — the reason it
+ * exists now, and what makes inspecting a specific generated chunk practical
+ * in M3.
+ */
+export const START_X: number | null = (() => {
+  const raw = params.get('x');
+  if (raw === null) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+})();

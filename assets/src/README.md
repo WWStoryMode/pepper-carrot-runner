@@ -4,14 +4,14 @@ Unmodified art and data from the original
 [WinterLicht/PepperAndCarrotRunningGame](https://github.com/WinterLicht/PepperAndCarrotRunningGame),
 CC-BY 4.0 — see [../../ATTRIBUTION.md](../../ATTRIBUTION.md).
 
-Nothing here is loaded at runtime. The build pipeline (added in M2) reads these and writes to
-`assets/generated/`, which is gitignored.
+Nothing here is loaded at runtime. `scripts/pack-atlas.ts` reads these and writes to
+`public/art/`, which is gitignored — the script is the source of truth, not its output.
 
 | Directory | Contents | Origin |
 |---|---|---|
 | `sprites/` | 140 loose PNGs — character/enemy animation frames, UI, nine-patches | `desktop/skin/` |
 | `tilesets/` | `tiles2` (475×665), `ground`, `enemies`, `potions`, `ingredients` | `android/assets/` |
-| `backgrounds/` | 1280×720 backdrops + `top_bg` (1280×123), `loading_screen` | `android/assets/` |
+| `backgrounds/` | 1280×720 backdrops + `top_bg` (1280×123), `loading_screen`, `testbg` (200×200 tiling wall) | `android/assets/` |
 | `levels/` | 8 Tiled TMX maps | `android/assets/` |
 | `fonts/` | 4 AngelCode bitmap fonts (`.fnt` + page PNG) | `android/assets/` |
 | `particles/` | 3 libGDX particle effects | `android/assets/` |

@@ -5,6 +5,7 @@ dist-ssr/
 
 # build artifacts
 assets/generated/
+public/art/
 .vite/
 *.tsbuildinfo
 
