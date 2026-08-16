@@ -143,10 +143,14 @@ export class GameScene extends Phaser.Scene {
       for (const key of ['SPACE', 'UP', 'W']) {
         keyboard.on(`keydown-${key}`, this.onJump, this);
       }
-      keyboard.on('keydown-R', this.restart, this);
+      keyboard.on('keydown-R', () => this.restart());
+      keyboard.on('keydown-ENTER', () => this.confirmDefault());
       keyboard.on('keydown-BACKTICK', () => this.overlayDebug.toggle());
       keyboard.on('keydown-P', () => this.togglePause());
-      keyboard.on('keydown-ESC', () => this.togglePause());
+      keyboard.on('keydown-ESC', () => {
+        if (this.runner.isDead) this.scene.start('Title');
+        else this.togglePause();
+      });
       keyboard.on('keydown-M', () => this.toggleMute());
 
       // The original's bindings: V for the free melee, then Y, X, C.
@@ -188,8 +192,14 @@ export class GameScene extends Phaser.Scene {
   private onJump(): void {
     this.sfx.unlock();
 
+    // Once the run is over, the jump control becomes "go again" — the end
+    // screen should never be a dead end, whatever else is wrong.
+    if (this.runner.isDead) {
+      this.restart();
+      return;
+    }
+
     if (this.modal.isVisible || this.paused) return;
-    if (this.runner.isDead) return;
 
     const wasGrounded = this.runner.isGrounded;
     const airBefore = this.runner.airJumps;
@@ -208,6 +218,12 @@ export class GameScene extends Phaser.Scene {
 
   private toggleMute(): void {
     this.sfx.setMuted(!this.sfx.isMuted);
+  }
+
+  /** Enter takes the obvious action for whatever is on screen. */
+  private confirmDefault(): void {
+    if (this.runner.isDead) this.restart();
+    else if (this.paused) this.togglePause();
   }
 
   // -- flow ----------------------------------------------------------------
@@ -288,6 +304,8 @@ export class GameScene extends Phaser.Scene {
       [
         `${distance} m`,
         distance > previousBest ? 'a new best' : `best ${metresOf(best.bestDistance)} m`,
+        '',
+        'space or R to run again    Esc for the menu',
       ],
       [
         { label: 'run again', onPress: () => this.restart() },

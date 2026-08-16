@@ -54,6 +54,9 @@ export class Sfx {
   setMuted(muted: boolean): void {
     this.muted = muted;
     if (this.master !== null) this.master.gain.value = muted ? 0 : 1;
+    // Unmuting is itself a gesture-adjacent action, so build the graph now if
+    // it was skipped while muted.
+    if (!muted) this.unlock();
   }
 
   /**
@@ -63,6 +66,11 @@ export class Sfx {
    * AudioContext otherwise, and one created too early sits suspended forever.
    */
   unlock(): void {
+    // A muted player should not pay for an audio graph at all. Creating one can
+    // take seconds on a machine with no audio device, which is a real stall for
+    // no benefit.
+    if (this.muted) return;
+
     if (this.context !== null) {
       if (this.context.state === 'suspended') void this.context.resume();
       return;

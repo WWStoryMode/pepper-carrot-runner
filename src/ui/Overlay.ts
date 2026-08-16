@@ -8,6 +8,13 @@ import { COLORS } from '@/config/display';
  * each of these as a separate `Screen` subclass that reconstructed its own
  * `Table` — and leaked a new set of `Texture`s every time, since `ScreenSwitch`
  * disposed nothing.
+ *
+ * **Everything here is a top-level scene object with an explicit depth, not a
+ * Container.** An earlier version nested the panel in containers, and the
+ * buttons did not respond to clicks at all. Two things make this version
+ * reliable: input ordering is decided by depth on plain objects, and every
+ * interactive area is given an explicit hit-area geometry rather than relying
+ * on one being inferred — Shapes carry no texture frame to infer it from.
  */
 
 export interface OverlayButton {
@@ -19,12 +26,20 @@ const BUTTON_WIDTH = 260;
 const BUTTON_HEIGHT = 62;
 const BUTTON_GAP = 20;
 
+const DEPTH_DIM = 500;
+const DEPTH_TEXT = 501;
+const DEPTH_BUTTON = 502;
+
+interface Button {
+  readonly background: Phaser.GameObjects.Rectangle;
+  readonly label: Phaser.GameObjects.Text;
+}
+
 export class Overlay {
-  private readonly container: Phaser.GameObjects.Container;
   private readonly dim: Phaser.GameObjects.Rectangle;
   private readonly heading: Phaser.GameObjects.Text;
   private readonly body: Phaser.GameObjects.Text;
-  private readonly buttons: Phaser.GameObjects.Container[] = [];
+  private buttons: Button[] = [];
   private visible = false;
 
   constructor(private readonly scene: Phaser.Scene) {
@@ -34,8 +49,14 @@ export class Overlay {
       .rectangle(0, 0, width, height, 0x110410, 0.82)
       .setOrigin(0, 0)
       .setScrollFactor(0)
-      // Swallow taps so the game does not receive them through the panel.
-      .setInteractive();
+      .setDepth(DEPTH_DIM);
+
+    // Swallow taps so the game does not receive them through the panel. The
+    // hit area is stated outright; a Shape has no frame to derive one from.
+    this.dim.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, width, height),
+      Phaser.Geom.Rectangle.Contains,
+    );
 
     this.heading = scene.add
       .text(width / 2, height / 2 - 150, '', {
@@ -45,7 +66,8 @@ export class Overlay {
         align: 'center',
       })
       .setOrigin(0.5)
-      .setScrollFactor(0);
+      .setScrollFactor(0)
+      .setDepth(DEPTH_TEXT);
 
     this.body = scene.add
       .text(width / 2, height / 2 - 70, '', {
@@ -56,12 +78,8 @@ export class Overlay {
         lineSpacing: 8,
       })
       .setOrigin(0.5, 0)
-      .setScrollFactor(0);
-
-    this.container = scene.add
-      .container(0, 0, [this.dim, this.heading, this.body])
-      .setDepth(500)
-      .setScrollFactor(0);
+      .setScrollFactor(0)
+      .setDepth(DEPTH_TEXT);
 
     this.hide();
   }
@@ -78,40 +96,65 @@ export class Overlay {
     this.clearButtons();
     this.buildButtons(buttons);
 
-    this.container.setVisible(true);
+    this.dim.setVisible(true);
+    this.heading.setVisible(true);
+    this.body.setVisible(true);
+
     this.layout();
   }
 
   hide(): void {
     this.visible = false;
-    this.container.setVisible(false);
+    this.dim.setVisible(false);
+    this.heading.setVisible(false);
+    this.body.setVisible(false);
     this.clearButtons();
   }
 
-  /** Re-centre after a viewport change. */
+  /** Re-place and re-size after a viewport change. */
   layout(): void {
     const { width, height } = this.scene.scale;
 
     this.dim.setSize(width, height);
+    this.dim.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, width, height),
+      Phaser.Geom.Rectangle.Contains,
+    );
+
     this.heading.setPosition(width / 2, height / 2 - 150);
     this.body.setPosition(width / 2, height / 2 - 70);
 
-    const totalWidth =
+    const total =
       this.buttons.length * BUTTON_WIDTH + Math.max(0, this.buttons.length - 1) * BUTTON_GAP;
-    let x = width / 2 - totalWidth / 2 + BUTTON_WIDTH / 2;
+    let x = width / 2 - total / 2 + BUTTON_WIDTH / 2;
+    const y = height / 2 + 110;
 
     for (const button of this.buttons) {
-      button.setPosition(x, height / 2 + 110);
+      button.background.setPosition(x, y);
+      button.label.setPosition(x, y);
       x += BUTTON_WIDTH + BUTTON_GAP;
     }
   }
 
-  private buildButtons(buttons: readonly OverlayButton[]): void {
-    for (const spec of buttons) {
+  private buildButtons(specs: readonly OverlayButton[]): void {
+    for (const spec of specs) {
       const background = this.scene.add
         .rectangle(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 0x432b2b, 1)
         .setStrokeStyle(2, 0xd0a381, 1)
-        .setInteractive({ useHandCursor: true });
+        .setScrollFactor(0)
+        .setDepth(DEPTH_BUTTON);
+
+      // Origin is 0.5, so the hit area is centred on the object too.
+      background.setInteractive(
+        new Phaser.Geom.Rectangle(
+          -BUTTON_WIDTH / 2,
+          -BUTTON_HEIGHT / 2,
+          BUTTON_WIDTH,
+          BUTTON_HEIGHT,
+        ),
+        Phaser.Geom.Rectangle.Contains,
+      );
+      background.input!.cursor = 'pointer';
 
       const label = this.scene.add
         .text(0, 0, spec.label, {
@@ -119,30 +162,27 @@ export class Overlay {
           fontSize: '22px',
           color: COLORS.white,
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(DEPTH_BUTTON + 1);
 
       background.on('pointerover', () => background.setFillStyle(0x5d3a3a, 1));
       background.on('pointerout', () => background.setFillStyle(0x432b2b, 1));
-      background.on(
-        'pointerdown',
-        (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
-          event.stopPropagation();
-          spec.onPress();
-        },
-      );
 
-      const group = this.scene.add
-        .container(0, 0, [background, label])
-        .setDepth(501)
-        .setScrollFactor(0);
+      // `pointerup` rather than `pointerdown`: the press that opened this panel
+      // can still be travelling, and acting on the down edge lets a single tap
+      // dismiss the panel and immediately trigger whatever is underneath.
+      background.on('pointerup', () => spec.onPress());
 
-      this.buttons.push(group);
-      this.container.add(group);
+      this.buttons.push({ background, label });
     }
   }
 
   private clearButtons(): void {
-    for (const button of this.buttons) button.destroy(true);
-    this.buttons.length = 0;
+    for (const button of this.buttons) {
+      button.background.destroy();
+      button.label.destroy();
+    }
+    this.buttons = [];
   }
 }

@@ -12,7 +12,17 @@ import { TitleScene } from '@/scenes/TitleScene';
  * captures, where the console is not being read.
  */
 function installErrorOverlay(): void {
+  // An error thrown inside the game loop repeats every frame. Appending each
+  // one grew the panel without bound and froze the tab outright — the overlay
+  // became a worse failure than the thing it was reporting.
+  const seen = new Set<string>();
+  const MAX_DISTINCT = 12;
+
   const show = (message: string): void => {
+    if (seen.has(message)) return;
+    if (seen.size >= MAX_DISTINCT) return;
+    seen.add(message);
+
     let panel = document.getElementById('error-overlay');
     if (panel === null) {
       panel = document.createElement('pre');
@@ -70,6 +80,15 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 const game = new Phaser.Game(config);
+
+/**
+ * Expose the game for browser-level testing.
+ *
+ * `scripts/click-test.mjs` drives the real input pipeline through this — the
+ * game-over buttons once shipped completely dead, and no amount of unit testing
+ * or screenshotting would have caught it, because neither presses anything.
+ */
+(globalThis as unknown as { __pcr?: Phaser.Game }).__pcr = game;
 
 /**
  * Re-derive the design width when the window changes shape.
