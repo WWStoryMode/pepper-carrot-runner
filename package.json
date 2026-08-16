@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "art": "tsx scripts/pack-atlas.ts && tsx scripts/build-levels.ts",
+    "art": "tsx scripts/pack-atlas.ts && tsx scripts/build-levels.ts && tsx scripts/build-icons.ts",
     "predev": "npm run art",
     "dev": "vite",
     "prebuild": "npm run art",

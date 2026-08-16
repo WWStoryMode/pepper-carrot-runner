@@ -3,8 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
     <title>Pepper&amp;Carrot Runner</title>
-    <meta name="description" content="An endless runner set in the Pepper&Carrot universe." />
+    <meta
+      name="description"
+      content="An endless runner through Pepper's potion cellar, set in David Revoy's Pepper&Carrot universe."
+    />
+    <meta name="theme-color" content="#110410" />
+    <meta name="color-scheme" content="dark" />
+
+    <link rel="icon" href="./favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Pepper&amp;Carrot Runner" />
+    <meta
+      property="og:description"
+      content="An endless runner through Pepper's potion cellar, set in David Revoy's Pepper&Carrot universe."
+    />
+    <meta property="og:image" content="./social.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!--
+      The splash is inline and asset-free so it paints from the first packet,
+      before the bundle has even been requested. It is also what gives the page a
+      Largest Contentful Paint at all: a <canvas> is not an LCP candidate, so an
+      all-canvas game reports NO_LCP and scores zero however fast it really is.
+    -->
     <style>
       :root {
         color-scheme: dark;
@@ -25,10 +51,94 @@
       #game canvas {
         display: block;
       }
+
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        background: radial-gradient(circle at 50% 38%, #2a1526 0%, #110410 70%);
+        font-family: Georgia, "Times New Roman", serif;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+        transition: opacity 340ms ease-out;
+      }
+      #splash[hidden] {
+        display: none;
+      }
+      #splash.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash h1 {
+        margin: 0;
+        font-size: clamp(30px, 6vw, 58px);
+        font-weight: normal;
+        color: #d0a381;
+        letter-spacing: 0.01em;
+      }
+      #splash p {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: clamp(13px, 2.2vw, 17px);
+        color: #7d7d7d;
+      }
+      #splash-track {
+        width: min(420px, 72vw);
+        height: 10px;
+        border-radius: 5px;
+        background: #432b2b;
+        overflow: hidden;
+      }
+      #splash-fill {
+        width: 0%;
+        height: 100%;
+        background: #d0a381;
+        transition: width 180ms linear;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #splash,
+        #splash-fill {
+          transition: none;
+        }
+      }
     </style>
   </head>
   <body>
     <div id="game"></div>
+
+    <div id="splash">
+      <h1>Pepper&amp;Carrot Runner</h1>
+      <div id="splash-track"><div id="splash-fill"></div></div>
+      <p id="splash-status">loading the cellar</p>
+    </div>
+
+    <noscript>
+      <p
+        style="
+          position: fixed;
+          inset: 0;
+          z-index: 20;
+          display: grid;
+          place-content: center;
+          margin: 0;
+          padding: 24px;
+          background: #110410;
+          color: #f1e6d5;
+          font-family: ui-monospace, monospace;
+          text-align: center;
+        "
+      >
+        This game needs JavaScript to run.
+      </p>
+    </noscript>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

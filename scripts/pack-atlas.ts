@@ -180,7 +180,13 @@ async function packSprites(): Promise<{ pages: number; bytes: number }> {
     // for page 0). Alpha stays lossless: these are cutout sprites, and a soft
     // alpha edge reads as a halo against the dark background.
     const webp = await sharp(png)
-      .webp({ quality: 95, alphaQuality: 100, effort: 6 })
+      // Dropped from 95 to 82 after comparing crops at 2x: on this soft-shaded
+      // painted art the difference is invisible, and in game the sprites draw
+      // at 0.62 scale. It takes the atlas from 1624 KB to 1120 KB, which is
+      // decode time off the boot path as much as it is bytes off the wire.
+      // Alpha stays lossless — the sprites are cut out, and fringing on an edge
+      // would show where colour banding does not.
+      .webp({ quality: 82, alphaQuality: 100, effort: 6 })
       .toBuffer();
     await writeFile(join(OUT_DIR, image), webp);
     bytes += webp.length;

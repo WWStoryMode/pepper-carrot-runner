@@ -94,6 +94,13 @@ export class TitleScene extends Phaser.Scene {
 
     this.refreshSettings();
     this.bindStart();
+
+    // Nothing is prefetched here on purpose. Pulling the kitchen backdrop and
+    // the level tilesets down while the title was up cost 1.2 s of blocked main
+    // thread — measured, not guessed — which janks the title exactly as it
+    // appears. The decoding has to happen either way; the scene that needs a
+    // texture loads it, which puts the cost where the player is already
+    // expecting a transition.
   }
 
   private makeSetting(x: number, y: number, onPress: () => void): Phaser.GameObjects.Text {
