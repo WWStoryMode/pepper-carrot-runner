@@ -31,6 +31,15 @@ export class Runner {
   vy = 0;
   state: RunnerState = 'running';
   health = MAX_HEALTH;
+  /** Raised by the Vitality upgrade; the base is the original's five hearts. */
+  maxHealth = MAX_HEALTH;
+  /**
+   * Enemy hits absorbed before health is touched, from the Ghost Ward upgrade.
+   *
+   * Hazards ignore these deliberately: poison is instant death by design, and
+   * a ward that saved you from it would blunt the one unambiguous threat.
+   */
+  wards = 0;
   deathCause: DeathCause = null;
   /**
    * Multiplier on forward speed, driven by Time Distortion.
@@ -77,7 +86,19 @@ export class Runner {
 
   heal(amount = 1): void {
     if (this.state === 'dying') return;
-    this.health = Math.min(MAX_HEALTH, this.health + amount);
+    this.health = Math.min(this.maxHealth, this.health + amount);
+  }
+
+  /**
+   * Spend a ward, if one is left.
+   *
+   * Returns whether the hit was absorbed, so the caller can skip the damage
+   * and report it differently.
+   */
+  consumeWard(): boolean {
+    if (this.wards <= 0) return false;
+    this.wards -= 1;
+    return true;
   }
 
   kill(cause: Exclude<DeathCause, null>): void {
@@ -91,12 +112,21 @@ export class Runner {
     return { x: this.x, y: this.y, state: this.state };
   }
 
+  /** Apply the between-runs upgrades. Call before `reset`. */
+  applyLoadout(maxHealth: number, wards: number): void {
+    this.maxHealth = Math.max(1, Math.floor(maxHealth));
+    this.startingWards = Math.max(0, Math.floor(wards));
+  }
+
+  private startingWards = 0;
+
   reset(x = 0, y = 0): void {
     this.x = x;
     this.y = y;
     this.vy = 0;
     this.state = 'running';
-    this.health = MAX_HEALTH;
+    this.health = this.maxHealth;
+    this.wards = this.startingWards;
     this.deathCause = null;
     this.speedFactor = 1;
     this.grounded = true;

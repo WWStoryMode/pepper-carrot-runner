@@ -139,9 +139,14 @@ async function main() {
 
   await send(socket, 'Runtime.enable');
 
+  // Start from a fresh page: a previous run leaves the tab in whatever scene it
+  // finished in, and a rebuild changes the bundle hash under it.
+  await send(socket, 'Page.enable');
+  await send(socket, 'Page.reload', { ignoreCache: true });
+
   // The title screen is first; start a run.
   await waitFor(socket, `globalThis.__pcr?.scene.getScene('Title')?.scene.isActive()`, 'title');
-  await evaluate(socket, `globalThis.__pcr.scene.start('Game'); return true;`);
+  await evaluate(socket, `globalThis.__pcr.scene.getScene('Title').scene.start('Game'); return true;`);
   await waitFor(socket, `globalThis.__pcr.scene.getScene('Game')?.runner`, 'game scene');
 
   // Silence it: building an AudioContext on a machine with no audio device

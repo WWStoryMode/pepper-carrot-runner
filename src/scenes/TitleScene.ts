@@ -25,6 +25,11 @@ export class TitleScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(COLORS.black);
 
+    // The scene instance outlives its display list, and the clock that would
+    // have disarmed this is shut down with the scene. Leaving it armed would
+    // let a later visit erase a save on the first tap, with no second chance.
+    this.resetArmed = false;
+
     this.add
       .tileSprite(0, 0, width, height, BACKGROUND_TEXTURE)
       .setOrigin(0)
@@ -81,8 +86,11 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.muteLabel = this.makeSetting(width / 2 - 130, height - 62, () => this.toggleMute());
-    this.resetLabel = this.makeSetting(width / 2 + 130, height - 62, () => this.resetProgress());
+    this.makeSetting(width / 2 - 260, height - 62, () => this.scene.start('Kitchen')).setText(
+      'the kitchen',
+    );
+    this.muteLabel = this.makeSetting(width / 2, height - 62, () => this.toggleMute());
+    this.resetLabel = this.makeSetting(width / 2 + 240, height - 62, () => this.resetProgress());
 
     this.refreshSettings();
     this.bindStart();
@@ -147,6 +155,13 @@ export class TitleScene extends Phaser.Scene {
 
     this.input.keyboard?.on('keydown-SPACE', start);
     this.input.keyboard?.on('keydown-ENTER', start);
-    this.input.on('pointerdown', start);
+    this.input.keyboard?.on('keydown-K', () => this.scene.start('Kitchen'));
+
+    // Buttons handle their own presses on pointerup; a bare tap on the
+    // background starts a run. Acting on pointerdown here would fire first and
+    // swallow every button on the screen.
+    this.input.on('pointerup', (_p: Phaser.Input.Pointer, over: unknown[]) => {
+      if (over.length === 0) start();
+    });
   }
 }

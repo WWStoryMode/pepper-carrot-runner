@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadSave, resetSave, saveRun, setMuted } from './store';
+import { loadSave, resetSave, saveProgression, saveRun, setMuted } from './store';
+
+const run = (distance: number, ingredients: Record<string, number> = {}) => ({
+  distance,
+  score: Math.floor(distance / 95),
+  kills: 0,
+  potions: 0,
+  ingredients,
+});
 
 /**
  * A minimal localStorage, since Node 20 has none.
@@ -54,8 +62,8 @@ describe('save data', () => {
   });
 
   it('keeps the best distance, not the latest', () => {
-    saveRun(5000, 50);
-    saveRun(1200, 12);
+    saveRun(run(5000));
+    saveRun(run(1200));
 
     const save = loadSave();
     expect(save.bestDistance).toBe(5000);
@@ -72,12 +80,12 @@ describe('save data', () => {
 
   it('keeps mute across a run being recorded', () => {
     setMuted(true);
-    saveRun(900, 9);
+    saveRun(run(900));
     expect(loadSave().muted).toBe(true);
   });
 
   it('clears scores on reset', () => {
-    saveRun(5000, 50);
+    saveRun(run(5000));
     resetSave();
 
     const save = loadSave();
@@ -93,7 +101,7 @@ describe('save data', () => {
 
   it('survives a storage that refuses writes', () => {
     storage.throwOnWrite = true;
-    expect(() => saveRun(100, 1)).not.toThrow();
+    expect(() => saveRun(run(100))).not.toThrow();
   });
 
   it('fills in missing fields from an older shape', () => {
@@ -103,5 +111,72 @@ describe('save data', () => {
     expect(save.bestDistance).toBe(300);
     expect(save.runs).toBe(0);
     expect(save.muted).toBe(false);
+  });
+});
+
+describe('schema migration', () => {
+  it('carries a version 1 save forward without losing it', () => {
+    // Exactly what M6 wrote: no progression fields at all.
+    storage.poke(
+      'pcr.save.v1',
+      JSON.stringify({ version: 1, bestDistance: 4200, bestScore: 44, runs: 9, muted: true }),
+    );
+
+    const save = loadSave();
+
+    expect(save.version).toBe(2);
+    expect(save.bestDistance).toBe(4200);
+    expect(save.runs).toBe(9);
+    expect(save.muted).toBe(true);
+    expect(save.ingredients).toEqual({});
+    expect(save.upgrades).toEqual({});
+    expect(save.stats.deaths).toBe(0);
+  });
+
+  it('discards nonsense counts rather than trusting them', () => {
+    storage.poke(
+      'pcr.save.v1',
+      JSON.stringify({
+        version: 2,
+        ingredients: { 'ingredient_sour-1': 5, bogus: 'lots', negative: -3, nan: NaN },
+        upgrades: { vitality: 2 },
+      }),
+    );
+
+    const save = loadSave();
+
+    expect(save.ingredients).toEqual({ 'ingredient_sour-1': 5 });
+    expect(save.upgrades).toEqual({ vitality: 2 });
+  });
+});
+
+describe('run outcomes', () => {
+  it('banks ingredients gathered during the run', () => {
+    saveRun(run(1000, { 'ingredient_sour-1': 3 }));
+    saveRun(run(1000, { 'ingredient_sour-1': 2, 'ingredient_sour-2': 1 }));
+
+    const save = loadSave();
+    expect(save.ingredients['ingredient_sour-1']).toBe(5);
+    expect(save.ingredients['ingredient_sour-2']).toBe(1);
+    expect(save.stats.ingredients).toBe(6);
+  });
+
+  it('accumulates lifetime statistics', () => {
+    saveRun({ distance: 100, score: 1, kills: 4, potions: 7, ingredients: {} });
+    saveRun({ distance: 100, score: 1, kills: 2, potions: 1, ingredients: {} });
+
+    const save = loadSave();
+    expect(save.stats.deaths).toBe(2);
+    expect(save.stats.kills).toBe(6);
+    expect(save.stats.potions).toBe(8);
+  });
+
+  it('keeps upgrades when a run is recorded', () => {
+    saveProgression({ 'ingredient_sour-1': 4 }, { vitality: 2 });
+    saveRun(run(500, { 'ingredient_sour-1': 1 }));
+
+    const save = loadSave();
+    expect(save.upgrades['vitality']).toBe(2);
+    expect(save.ingredients['ingredient_sour-1']).toBe(5);
   });
 });

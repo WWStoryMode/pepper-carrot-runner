@@ -7,6 +7,7 @@ import { AbilityView } from '@/entities/AbilityView';
 import { PlayerView } from '@/entities/PlayerView';
 import { AbilityBar } from '@/hud/AbilityBar';
 import { Hud, metresOf, scoreOf } from '@/hud/Hud';
+import { loadoutFor } from '@/progression/upgrades';
 import { loadSave, saveRun } from '@/save/store';
 import { ABILITIES, AbilitySystem, type AbilitySlot } from '@/sim/abilities';
 import { shouldJump } from '@/sim/autopilot';
@@ -91,6 +92,10 @@ export class GameScene extends Phaser.Scene {
   private recorded = false;
   private lastKills = 0;
   private wasGrounded = true;
+
+  // Banked only when the run ends, which for an endless game means on death.
+  private gatheredIngredients: Record<string, number> = {};
+  private collectedPotions = 0;
 
   // Measured per jump so the debug readout reports the real arc.
   private peakHeight = 0;
@@ -269,8 +274,21 @@ export class GameScene extends Phaser.Scene {
 
     this.modal.hide();
     this.paused = false;
+
+    // Between-runs upgrades are applied before the reset that reads them.
+    const loadout = loadoutFor(loadSave().upgrades);
+    this.runner.applyLoadout(loadout.maxHealth, loadout.wards);
+
     this.runner.reset(startX, GROUND_Y);
     this.abilities.reset();
+    this.gatheredIngredients = {};
+    this.collectedPotions = 0;
+
+    for (const def of ABILITIES) {
+      for (let i = 0; i < Math.min(def.cost, loadout.startingCharge); i += 1) {
+        if (def.potion !== null) this.abilities.chargeFromPotion(def.potion);
+      }
+    }
 
     if (START_CHARGED) {
       for (const def of ABILITIES) {
@@ -312,14 +330,23 @@ export class GameScene extends Phaser.Scene {
 
     const distance = metresOf(this.runner.distance);
     const previousBest = metresOf(loadSave().bestDistance);
-    const best = saveRun(this.runner.distance, scoreOf(this.runner.distance));
+    const best = saveRun({
+      distance: this.runner.distance,
+      score: scoreOf(this.runner.distance),
+      kills: this.abilities.kills,
+      potions: this.collectedPotions,
+      ingredients: this.gatheredIngredients,
+    });
     this.hud.setBest(best.bestDistance);
+
+    const gathered = Object.values(this.gatheredIngredients).reduce((a, b) => a + b, 0);
 
     this.modal.show(
       DEATH_MESSAGE[this.runner.deathCause ?? 'pit'],
       [
         `${distance} m`,
         distance > previousBest ? 'a new best' : `best ${metresOf(best.bestDistance)} m`,
+        gathered > 0 ? `${gathered} ingredient${gathered === 1 ? '' : 's'} for the kitchen` : '',
         '',
         'space, R or tap to run again    Esc for the menu',
       ],
@@ -354,7 +381,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setDead(this.runner.isDead);
     this.entityView.update();
     this.abilityView.update(this.abilities.activeEffects, time);
-    this.hud.update(this.runner.distance, this.runner.health);
+    this.hud.update(this.runner.distance, this.runner.health, this.runner.maxHealth);
     this.abilityBar.update(this.abilities.energy, this.abilities.runningSlot);
 
     this.overlayDebug.draw(
@@ -399,7 +426,14 @@ export class GameScene extends Phaser.Scene {
       this.runner.step(dt, this.platforms);
 
       const contact = resolveContacts(this.runner, this.stream.activeEntities);
-      for (const potion of contact.potions) this.abilities.chargeFromPotion(potion.name);
+      for (const potion of contact.potions) {
+        this.abilities.chargeFromPotion(potion.name);
+        this.collectedPotions += 1;
+      }
+      for (const ingredient of contact.ingredients) {
+        this.gatheredIngredients[ingredient.name] =
+          (this.gatheredIngredients[ingredient.name] ?? 0) + 1;
+      }
 
       this.abilities.update(dt, this.runner, this.stream.activeEntities);
       this.reportContact(contact);
@@ -416,6 +450,7 @@ export class GameScene extends Phaser.Scene {
       this.sfx.play('pickup');
     }
 
+    if (contact.warded > 0) this.sfx.play('cast');
     if (contact.damaged > 0 && !this.runner.isDead) this.sfx.play('hurt');
 
     if (this.abilities.kills > this.lastKills) {
