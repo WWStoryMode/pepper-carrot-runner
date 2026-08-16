@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "art": "tsx scripts/pack-atlas.ts",
+    "art": "tsx scripts/pack-atlas.ts && tsx scripts/build-levels.ts",
     "predev": "npm run art",
     "dev": "vite",
     "prebuild": "npm run art",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "fast-xml-parser": "^5.11.0",
     "maxrects-packer": "^2.7.3",
     "sharp": "^0.35.3",
     "tsx": "^4.23.12",

@@ -15,6 +15,9 @@
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
 
+    // The build scripts run through tsx, which resolves the on-disk .ts paths
+    // directly; only `src/` goes through the bundler's extensionless resolution.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,

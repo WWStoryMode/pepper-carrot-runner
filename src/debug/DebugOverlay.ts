@@ -16,6 +16,9 @@ export interface DebugFrame {
   readonly fps: number;
   readonly peakHeight: number;
   readonly lastAirtime: number;
+  readonly chunks: number;
+  readonly sprites: number;
+  readonly pool: number;
 }
 
 /**
@@ -38,7 +41,8 @@ export class DebugOverlay {
     this.shapes.setDepth(100);
 
     this.readout = scene.add
-      .text(10, 10, '', {
+      // Below the HUD, which owns the top-left corner.
+      .text(10, 100, '', {
         fontFamily: 'monospace',
         fontSize: '16px',
         color: COLORS.skillGreen,
@@ -103,6 +107,9 @@ export class DebugOverlay {
       `airtime  ${frame.lastAirtime.toFixed(3)} s`,
       `steps    ${frame.steps}`,
       `fps      ${frame.fps.toFixed(0)}`,
+      `chunks   ${frame.chunks}`,
+      // If `pool` keeps climbing over a long run, recycling is leaking.
+      `sprites  ${frame.sprites} / pool ${frame.pool}`,
     ]);
   }
 
