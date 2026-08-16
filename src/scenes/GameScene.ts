@@ -15,7 +15,12 @@ import { resolveContacts } from '@/sim/entities';
 import { FixedStepper } from '@/sim/FixedStepper';
 import { Runner } from '@/sim/Runner';
 import type { DeathCause, Platform, RunnerSnapshot } from '@/sim/types';
-import { BACKGROUND_TEXTURE, GROUND_TEXTURE, LEVELS_KEY } from '@/scenes/PreloadScene';
+import {
+  BACKGROUND_TEXTURE,
+  GROUND_TEXTURE,
+  LEVELS_KEY,
+  queueLevelTilesets,
+} from '@/scenes/PreloadScene';
 import { Overlay } from '@/ui/Overlay';
 import { ChunkStream, GROUND_Y } from '@/world/ChunkStream';
 import { ChunkView } from '@/world/ChunkView';
@@ -105,6 +110,15 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super('Game');
+  }
+
+  /**
+   * The tilesets are not part of the boot load — nothing before a run needs
+   * them. TitleScene normally has them by now; this covers starting a run
+   * before that finished.
+   */
+  preload(): void {
+    queueLevelTilesets(this, this.cache.json.get(LEVELS_KEY) as LevelData);
   }
 
   create(): void {

@@ -13,7 +13,7 @@ import {
   type UpgradeDef,
 } from '@/progression/upgrades';
 import { loadSave, saveProgression } from '@/save/store';
-import { KITCHEN_TEXTURE } from '@/scenes/PreloadScene';
+import { KITCHEN_TEXTURE, KITCHEN_TEXTURE_URL } from '@/scenes/PreloadScene';
 
 /**
  * Pepper's kitchen: spend what you gathered.
@@ -45,14 +45,28 @@ export class KitchenScene extends Phaser.Scene {
     super('Kitchen');
   }
 
+  /**
+   * The backdrop is not part of the boot load — 850 KB for a screen reached
+   * from a menu has no business delaying the title. TitleScene usually has it
+   * in hand by now; this covers arriving here before that finished.
+   */
+  preload(): void {
+    if (!this.textures.exists(KITCHEN_TEXTURE)) {
+      this.load.image(KITCHEN_TEXTURE, KITCHEN_TEXTURE_URL);
+    }
+  }
+
   create(): void {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(COLORS.black);
 
     // Cover the frame rather than stretch to it: the art is 1280×720 and the
     // design width follows the window, so the aspect ratios rarely match.
-    const backdrop = this.add.image(width / 2, height / 2, KITCHEN_TEXTURE).setTint(0x9a90ad);
-    backdrop.setScale(Math.max(width / backdrop.width, height / backdrop.height));
+    // A failed fetch costs the backdrop, not the screen.
+    if (this.textures.exists(KITCHEN_TEXTURE)) {
+      const backdrop = this.add.image(width / 2, height / 2, KITCHEN_TEXTURE).setTint(0x9a90ad);
+      backdrop.setScale(Math.max(width / backdrop.width, height / backdrop.height));
+    }
 
     this.add
       .text(width / 2, 46, 'the kitchen', {

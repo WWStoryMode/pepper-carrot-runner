@@ -1,60 +1,15 @@
 import Phaser from 'phaser';
 import { COLORS, designSizeFor } from '@/config/display';
+import { mark } from '@/config/perf';
 import { GameScene } from '@/scenes/GameScene';
 import { KitchenScene } from '@/scenes/KitchenScene';
 import { PreloadScene } from '@/scenes/PreloadScene';
 import { TitleScene } from '@/scenes/TitleScene';
+import { installErrorBoundary } from '@/ui/errorBoundary';
+import { failSplash } from '@/ui/splash';
 
-/**
- * Surface uncaught errors on the page.
- *
- * A scene that throws inside `create` leaves Phaser rendering nothing at all,
- * so the canvas goes black with no clue as to why — including in headless
- * captures, where the console is not being read.
- */
-function installErrorOverlay(): void {
-  // An error thrown inside the game loop repeats every frame. Appending each
-  // one grew the panel without bound and froze the tab outright — the overlay
-  // became a worse failure than the thing it was reporting.
-  const seen = new Set<string>();
-  const MAX_DISTINCT = 12;
-
-  const show = (message: string): void => {
-    if (seen.has(message)) return;
-    if (seen.size >= MAX_DISTINCT) return;
-    seen.add(message);
-
-    let panel = document.getElementById('error-overlay');
-    if (panel === null) {
-      panel = document.createElement('pre');
-      panel.id = 'error-overlay';
-      panel.style.cssText = [
-        'position:fixed',
-        'inset:0',
-        'margin:0',
-        'padding:24px',
-        'overflow:auto',
-        'z-index:9999',
-        'background:#1a0510f2',
-        'color:#ff9db3',
-        'font:14px/1.5 monospace',
-        'white-space:pre-wrap',
-      ].join(';');
-      document.body.appendChild(panel);
-    }
-    panel.textContent += `${message}\n\n`;
-  };
-
-  globalThis.addEventListener('error', (event) => {
-    show(`${event.message}\n${event.error?.stack ?? ''}`);
-  });
-
-  globalThis.addEventListener('unhandledrejection', (event) => {
-    show(`Unhandled rejection: ${String(event.reason)}`);
-  });
-}
-
-installErrorOverlay();
+installErrorBoundary();
+mark('module-evaluated');
 
 const initial = designSizeFor(globalThis.innerWidth, globalThis.innerHeight);
 
@@ -73,35 +28,69 @@ const config: Phaser.Types.Core.GameConfig = {
   render: {
     pixelArt: false,
     antialias: true,
+    // Ask for the discrete GPU on machines that have one. The art is large and
+    // the run scrolls continuously, so this is exactly the workload the hint is
+    // meant for.
+    powerPreference: 'high-performance',
   },
   input: {
     gamepad: true,
   },
+  // Nothing here is transparent over the page, and telling the compositor so
+  // saves it blending the canvas against the document on every frame.
+  transparent: false,
+  banner: false,
   scene: [PreloadScene, TitleScene, KitchenScene, GameScene],
 };
 
-const game = new Phaser.Game(config);
+function boot(): void {
+  /**
+   * Booting can fail outright — no WebGL, no canvas, a blocked context. Phaser
+   * throws before any scene runs, so without this the splash would sit at zero
+   * per cent forever with no explanation.
+   */
+  let game: Phaser.Game;
+  try {
+    game = new Phaser.Game(config);
+  } catch (error) {
+    failSplash('this browser could not start the game');
+    throw error;
+  }
+  mark('game-constructed');
+
+  /**
+   * Expose the game for browser-level testing.
+   *
+   * `scripts/click-test.mjs` drives the real input pipeline through this — the
+   * game-over buttons once shipped completely dead, and no amount of unit
+   * testing or screenshotting would have caught it, because neither presses
+   * anything.
+   */
+  (globalThis as unknown as { __pcr?: Phaser.Game }).__pcr = game;
+
+  /**
+   * Re-derive the design width when the window changes shape.
+   *
+   * Only the width moves; the height is the contract that keeps the world a
+   * consistent size however the window is arranged.
+   */
+  let resizeHandle: ReturnType<typeof setTimeout> | undefined;
+  globalThis.addEventListener('resize', () => {
+    if (resizeHandle !== undefined) clearTimeout(resizeHandle);
+    resizeHandle = setTimeout(() => {
+      const size = designSizeFor(globalThis.innerWidth, globalThis.innerHeight);
+      game.scale.setGameSize(size.width, size.height);
+    }, 120);
+  });
+}
 
 /**
- * Expose the game for browser-level testing.
+ * Boot on the frame after this module finishes evaluating.
  *
- * `scripts/click-test.mjs` drives the real input pipeline through this — the
- * game-over buttons once shipped completely dead, and no amount of unit testing
- * or screenshotting would have caught it, because neither presses anything.
+ * Constructing the game takes ~300 ms — building the WebGL context and
+ * compiling pipelines — and running it in the same task as module evaluation
+ * makes one ~500 ms block during which the browser cannot paint. Yielding first
+ * lets the splash actually appear, and splits one long task into two shorter
+ * ones. The work is identical; only its scheduling changes.
  */
-(globalThis as unknown as { __pcr?: Phaser.Game }).__pcr = game;
-
-/**
- * Re-derive the design width when the window changes shape.
- *
- * Only the width moves; the height is the contract that keeps the world a
- * consistent size however the window is arranged.
- */
-let resizeHandle: ReturnType<typeof setTimeout> | undefined;
-globalThis.addEventListener('resize', () => {
-  if (resizeHandle !== undefined) clearTimeout(resizeHandle);
-  resizeHandle = setTimeout(() => {
-    const size = designSizeFor(globalThis.innerWidth, globalThis.innerHeight);
-    game.scale.setGameSize(size.width, size.height);
-  }, 120);
-});
+requestAnimationFrame(() => globalThis.setTimeout(boot, 0));
