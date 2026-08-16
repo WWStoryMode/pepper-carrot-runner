@@ -32,7 +32,10 @@ export class Hud {
   private readonly hearts: Phaser.GameObjects.Image[] = [];
   private shownHealth = -1;
 
-  constructor(scene: Phaser.Scene, private best: number) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private best: number,
+  ) {
     this.distanceText = scene.add
       .text(24, 20, '', {
         fontFamily: 'Georgia, serif',
@@ -66,7 +69,16 @@ export class Hud {
       );
     }
 
+    this.layout();
     this.update(0, MAX_HEALTH);
+  }
+
+  /** Re-place after a viewport change; only the hearts depend on width. */
+  layout(): void {
+    const step = HEART_SIZE * HEART_SCALE + HEART_GAP;
+    for (const [index, heart] of this.hearts.entries()) {
+      heart.setPosition(this.scene.scale.width - 30, 30 + index * step);
+    }
   }
 
   setBest(best: number): void {

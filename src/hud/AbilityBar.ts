@@ -33,8 +33,8 @@ interface Slot {
   readonly button: Phaser.GameObjects.Image;
   readonly ring: Phaser.GameObjects.Graphics;
   readonly label: Phaser.GameObjects.Text;
-  readonly centreX: number;
-  readonly centreY: number;
+  centreX: number;
+  centreY: number;
   shownCharge: number;
   shownReady: boolean;
 }
@@ -43,7 +43,7 @@ export class AbilityBar {
   private readonly slots: Slot[] = [];
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly onActivate: (slot: AbilitySlot) => void,
   ) {
     const right = scene.scale.width - MARGIN;
@@ -88,6 +88,25 @@ export class AbilityBar {
         shownCharge: -1,
         shownReady: false,
       });
+    }
+  }
+
+  /** Re-place the whole arc after a viewport change. */
+  layout(): void {
+    const right = this.scene.scale.width - MARGIN;
+    const bottom = this.scene.scale.height - MARGIN;
+
+    for (const def of ABILITIES) {
+      const slot = this.slots[def.slot]!;
+      const place = LAYOUT[def.slot]!;
+
+      slot.centreX = right - BUTTON_SIZE / 2 - place.dx;
+      slot.centreY = bottom - BUTTON_SIZE / 2 + place.dy;
+
+      slot.button.setPosition(slot.centreX, slot.centreY);
+      slot.label.setPosition(slot.centreX, slot.centreY + BUTTON_SIZE / 2 + 2);
+      // Force the ring to be redrawn at the new centre.
+      slot.shownCharge = -1;
     }
   }
 
