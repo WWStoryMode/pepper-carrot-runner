@@ -42,7 +42,17 @@ const CARROT: readonly AnimationDef[] = [
   { key: 'carrot_idle', frames: 4, frameDuration: 0.18, mode: 'pingpong' },
 ];
 
-export const ALL_ANIMATIONS: readonly AnimationDef[] = [...PEPPER, ...CARROT];
+/** Enemies and pickups, from `Enemy.java` and `Potion.java`. */
+const WORLD: readonly AnimationDef[] = [
+  { key: 'fly-idle', frames: 3, frameDuration: 0.14, mode: 'loop' },
+  { key: 'fly-death', frames: 6, frameDuration: 0.07, mode: 'once' },
+  { key: 'spider-idle', frames: 3, frameDuration: 0.14, mode: 'loop' },
+  { key: 'spider-death', frames: 6, frameDuration: 0.07, mode: 'once' },
+  // Drawn behind every collectible in the original.
+  { key: 'sparkling', frames: 9, frameDuration: 0.14, mode: 'loop' },
+];
+
+export const ALL_ANIMATIONS: readonly AnimationDef[] = [...PEPPER, ...CARROT, ...WORLD];
 
 /** Register every animation on the global animation manager. Idempotent. */
 export function registerAnimations(anims: Phaser.Animations.AnimationManager): void {

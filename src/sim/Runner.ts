@@ -5,12 +5,14 @@ import {
   JUMP_BUFFER,
   JUMP_SPEED,
   MAX_AIR_JUMPS,
+  MAX_HEALTH,
+  PLAYER_HEIGHT,
   PLAYER_WIDTH,
   RUN_SPEED,
   TERMINAL_FALL,
 } from '@/config/constants';
-import { findLanding } from './collision';
-import type { Platform, RunnerSnapshot, RunnerState } from './types';
+import { findLanding, findSideCollision } from './collision';
+import type { DeathCause, Platform, RunnerSnapshot, RunnerState } from './types';
 
 /**
  * The player.
@@ -28,6 +30,8 @@ export class Runner {
   y = 0;
   vy = 0;
   state: RunnerState = 'running';
+  health = MAX_HEALTH;
+  deathCause: DeathCause = null;
 
   private grounded = true;
   private airJumpsLeft = MAX_AIR_JUMPS;
@@ -52,6 +56,29 @@ export class Runner {
     return this.airJumpsLeft;
   }
 
+  /**
+   * Take damage. Hearts absorb things that hit *you* — enemies and hazards.
+   * Geometry you run into (walls, pits) bypasses them entirely.
+   */
+  damage(amount: number, cause: Exclude<DeathCause, null>): void {
+    if (this.state === 'dying') return;
+
+    this.health = Math.max(0, this.health - amount);
+    if (this.health === 0) this.kill(cause);
+  }
+
+  heal(amount = 1): void {
+    if (this.state === 'dying') return;
+    this.health = Math.min(MAX_HEALTH, this.health + amount);
+  }
+
+  kill(cause: Exclude<DeathCause, null>): void {
+    if (this.state === 'dying') return;
+    this.state = 'dying';
+    this.deathCause = cause;
+    this.vy = 0;
+  }
+
   snapshot(): RunnerSnapshot {
     return { x: this.x, y: this.y, state: this.state };
   }
@@ -61,6 +88,8 @@ export class Runner {
     this.y = y;
     this.vy = 0;
     this.state = 'running';
+    this.health = MAX_HEALTH;
+    this.deathCause = null;
     this.grounded = true;
     this.airJumpsLeft = MAX_AIR_JUMPS;
     this.coyoteTimer = 0;
@@ -108,6 +137,7 @@ export class Runner {
   step(dt: number, platforms: readonly Platform[]): void {
     if (this.state === 'dying') return;
 
+    const previousX = this.x;
     this.x += RUN_SPEED * dt;
 
     const prevFeet = this.y;
@@ -142,9 +172,18 @@ export class Runner {
       if (this.grounded && this.jumpBufferTimer > 0) this.groundJump();
     }
 
-    if (this.y < DEATH_PLANE) {
-      this.state = 'dying';
-      this.vy = 0;
-    }
+    // Ran into the face of a shelf. Checked after landing so that stepping onto
+    // a platform is resolved as a landing rather than a crash.
+    const wall = findSideCollision(
+      previousX,
+      this.x,
+      this.y,
+      PLAYER_WIDTH / 2,
+      PLAYER_HEIGHT,
+      platforms,
+    );
+    if (wall !== null) this.kill('crash');
+
+    if (this.y < DEATH_PLANE) this.kill('pit');
   }
 }
