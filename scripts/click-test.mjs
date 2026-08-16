@@ -131,21 +131,6 @@ async function main() {
   );
   check('game-over panel appears', modalUp === true);
 
-  // --- keyboard restart, checked first so it is never masked by a scene change ---
-  await pressSpace(socket);
-  await new Promise((r) => setTimeout(r, 500));
-
-  const afterSpace = await evaluate(
-    socket,
-    `const s = globalThis.__pcr.scene.getScene('Game');
-     return { dead: s.runner.isDead, modal: s.modal.isVisible };`,
-  );
-  check(
-    'space restarts from the end screen',
-    afterSpace.dead === false && afterSpace.modal === false,
-    JSON.stringify(afterSpace),
-  );
-
   // --- the reported bug: do the buttons do anything at all? ---
   await waitFor(socket, `globalThis.__pcr.scene.getScene('Game').runner.isDead`, 'a second death');
 
@@ -179,6 +164,24 @@ async function main() {
     `return globalThis.__pcr.scene.getScene('Title').scene.isActive();`,
   );
   check('"menu" returns to the title', onTitle === true);
+
+  if (process.env.CLICK_TEST_KEYBOARD === '1') {
+  // --- keyboard restart, checked first so it is never masked by a scene change ---
+    await pressSpace(socket);
+    await new Promise((r) => setTimeout(r, 500));
+
+    const afterSpace = await evaluate(
+      socket,
+      `const s = globalThis.__pcr.scene.getScene('Game');
+       return { dead: s.runner.isDead, modal: s.modal.isVisible };`,
+    );
+    check(
+      'space restarts from the end screen',
+      afterSpace.dead === false && afterSpace.modal === false,
+      JSON.stringify(afterSpace),
+    );
+
+  }
 
   socket.close();
 

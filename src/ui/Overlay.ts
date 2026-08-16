@@ -22,6 +22,19 @@ export interface OverlayButton {
   readonly onPress: () => void;
 }
 
+export interface OverlayOptions {
+  /**
+   * Action for a press that lands on the dim, not on a button.
+   *
+   * The scene must not listen for taps itself while a panel is up: a
+   * scene-level `pointerdown` fires for every press including ones on the
+   * buttons, and acts first — which is precisely how "menu" came to be
+   * unreachable while "run again" appeared to work, restarting being what it
+   * would have done anyway.
+   */
+  readonly onBackground?: () => void;
+}
+
 const BUTTON_WIDTH = 260;
 const BUTTON_HEIGHT = 62;
 const BUTTON_GAP = 20;
@@ -41,6 +54,7 @@ export class Overlay {
   private readonly body: Phaser.GameObjects.Text;
   private buttons: Button[] = [];
   private visible = false;
+  private backgroundAction: (() => void) | null = null;
 
   constructor(private readonly scene: Phaser.Scene) {
     const { width, height } = scene.scale;
@@ -57,6 +71,10 @@ export class Overlay {
       new Phaser.Geom.Rectangle(0, 0, width, height),
       Phaser.Geom.Rectangle.Contains,
     );
+
+    // Buttons sit above the dim, so `topOnly` hit testing means this only
+    // fires for presses that missed them.
+    this.dim.on('pointerup', () => this.backgroundAction?.());
 
     this.heading = scene.add
       .text(width / 2, height / 2 - 150, '', {
@@ -88,8 +106,14 @@ export class Overlay {
     return this.visible;
   }
 
-  show(heading: string, lines: readonly string[], buttons: readonly OverlayButton[]): void {
+  show(
+    heading: string,
+    lines: readonly string[],
+    buttons: readonly OverlayButton[],
+    options: OverlayOptions = {},
+  ): void {
     this.visible = true;
+    this.backgroundAction = options.onBackground ?? null;
     this.heading.setText(heading);
     this.body.setText(lines.join('\n'));
 
@@ -97,6 +121,7 @@ export class Overlay {
     this.buildButtons(buttons);
 
     this.dim.setVisible(true);
+    this.dim.input!.enabled = true;
     this.heading.setVisible(true);
     this.body.setVisible(true);
 
@@ -105,7 +130,9 @@ export class Overlay {
 
   hide(): void {
     this.visible = false;
+    this.backgroundAction = null;
     this.dim.setVisible(false);
+    if (this.dim.input) this.dim.input.enabled = false;
     this.heading.setVisible(false);
     this.body.setVisible(false);
     this.clearButtons();

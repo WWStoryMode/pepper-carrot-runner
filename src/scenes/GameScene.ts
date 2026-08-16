@@ -160,7 +160,10 @@ export class GameScene extends Phaser.Scene {
       keyboard.on('keydown-C', () => this.castAbility(3));
     }
 
-    this.input.on('pointerdown', this.onJump, this);
+    // Pointer input goes through its own path, because a scene-level handler
+    // fires for every press — including presses on the panel's own buttons,
+    // ahead of them. Keyboard has no such conflict.
+    this.input.on('pointerdown', this.onPointerDown, this);
   }
 
   private bindLifecycle(): void {
@@ -189,6 +192,19 @@ export class GameScene extends Phaser.Scene {
     if (!this.runner.isDead && !this.paused) this.togglePause();
   }
 
+  /**
+   * Taps on the canvas.
+   *
+   * While a panel is open it owns every press: its buttons handle their own,
+   * and its background handles the rest. Acting here as well is what made
+   * "menu" unreachable — this restarted the run before the button was heard.
+   */
+  private onPointerDown(): void {
+    this.sfx.unlock();
+    if (this.modal.isVisible) return;
+    this.onJump();
+  }
+
   private onJump(): void {
     this.sfx.unlock();
 
@@ -199,7 +215,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.modal.isVisible || this.paused) return;
+    if (this.paused) return;
 
     const wasGrounded = this.runner.isGrounded;
     const airBefore = this.runner.airJumps;
@@ -305,12 +321,14 @@ export class GameScene extends Phaser.Scene {
         `${distance} m`,
         distance > previousBest ? 'a new best' : `best ${metresOf(best.bestDistance)} m`,
         '',
-        'space or R to run again    Esc for the menu',
+        'space, R or tap to run again    Esc for the menu',
       ],
       [
         { label: 'run again', onPress: () => this.restart() },
         { label: 'menu', onPress: () => this.scene.start('Title') },
       ],
+      // Tapping anywhere else still goes again, which is the common case.
+      { onBackground: () => this.restart() },
     );
   }
 
