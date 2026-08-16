@@ -171,14 +171,13 @@ export class Overlay {
         .setScrollFactor(0)
         .setDepth(DEPTH_BUTTON);
 
-      // Origin is 0.5, so the hit area is centred on the object too.
+      // Hit areas are in un-origin-adjusted local space: Phaser adds the
+      // object's displayOrigin to the local point before testing. So this is
+      // (0, 0, w, h) even though the origin is 0.5 — offsetting it by half the
+      // size, as an earlier version did, shifted the clickable region up and
+      // left of the button you can see, and pressed its neighbour.
       background.setInteractive(
-        new Phaser.Geom.Rectangle(
-          -BUTTON_WIDTH / 2,
-          -BUTTON_HEIGHT / 2,
-          BUTTON_WIDTH,
-          BUTTON_HEIGHT,
-        ),
+        new Phaser.Geom.Rectangle(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT),
         Phaser.Geom.Rectangle.Contains,
       );
       background.input!.cursor = 'pointer';

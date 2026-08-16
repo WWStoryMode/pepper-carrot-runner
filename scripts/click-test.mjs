@@ -72,18 +72,43 @@ async function click(socket, x, y) {
   await send(socket, 'Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' });
 }
 
-/** Page coordinates of an overlay button, via Phaser's own scale transform. */
-const BUTTON_POSITION = (index) => `
+/**
+ * Page coordinates of a point on an overlay button.
+ *
+ * `fx`/`fy` are fractions of the button's half-extent, so 0,0 is the centre and
+ * ±1 is an edge. Clicking only the centre once hid a hit area that was offset
+ * by half the button: dead centre happened to land exactly on the corner of the
+ * shifted rectangle and passed. Off-centre points do not forgive that.
+ */
+const BUTTON_POSITION = (index, fx = 0, fy = 0) => `
   const game = globalThis.__pcr;
   const scene = game.scene.getScene('Game');
-  const button = scene.modal.buttons[${index}].background;
+  const entry = scene.modal.buttons[${index}];
+  const button = entry.background;
   const bounds = game.scale.canvasBounds;
   const scale = game.scale.displayScale;
+  const gx = button.x + (${fx}) * button.width / 2;
+  const gy = button.y + (${fy}) * button.height / 2;
   return {
-    x: bounds.left + button.x / scale.x,
-    y: bounds.top + button.y / scale.y,
-    label: scene.modal.buttons[${index}].label.text,
+    x: bounds.left + gx / scale.x,
+    y: bounds.top + gy / scale.y,
+    label: entry.label.text,
   };
+`;
+
+/** Which button, if any, Phaser believes is under a page point. */
+const BUTTON_UNDER = (pageX, pageY) => `
+  const game = globalThis.__pcr;
+  const scene = game.scene.getScene('Game');
+  const bounds = game.scale.canvasBounds;
+  const scale = game.scale.displayScale;
+  const gx = (${pageX} - bounds.left) * scale.x;
+  const gy = (${pageY} - bounds.top) * scale.y;
+  const hit = scene.modal.buttons.findIndex((b) => {
+    const w = b.background.width, h = b.background.height;
+    return Math.abs(gx - b.background.x) <= w / 2 && Math.abs(gy - b.background.y) <= h / 2;
+  });
+  return hit;
 `;
 
 const checks = [];
@@ -134,8 +159,12 @@ async function main() {
   // --- the reported bug: do the buttons do anything at all? ---
   await waitFor(socket, `globalThis.__pcr.scene.getScene('Game').runner.isDead`, 'a second death');
 
-  const again = await evaluate(socket, BUTTON_POSITION(0));
+  const again = await evaluate(socket, BUTTON_POSITION(0, -0.7, 0.6));
   check('first button is "run again"', again.label === 'run again', again.label);
+
+  // The point must be inside button 0 and nowhere near button 1.
+  const under = await evaluate(socket, BUTTON_UNDER(again.x, again.y));
+  check('hit area lines up with the drawn button', under === 0, `pointer over index ${under}`);
 
   await click(socket, again.x, again.y);
   await new Promise((r) => setTimeout(r, 500));
@@ -153,8 +182,11 @@ async function main() {
 
   // --- and the second one, last, because it leaves the scene ---
   await waitFor(socket, `globalThis.__pcr.scene.getScene('Game').runner.isDead`, 'a third death');
-  const menu = await evaluate(socket, BUTTON_POSITION(1));
+  const menu = await evaluate(socket, BUTTON_POSITION(1, 0.7, -0.6));
   check('second button is "menu"', menu.label === 'menu', menu.label);
+
+  const underMenu = await evaluate(socket, BUTTON_UNDER(menu.x, menu.y));
+  check('menu hit area lines up too', underMenu === 1, `pointer over index ${underMenu}`);
 
   await click(socket, menu.x, menu.y);
   await new Promise((r) => setTimeout(r, 700));
