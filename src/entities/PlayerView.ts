@@ -53,6 +53,7 @@ export class PlayerView {
   private readonly pepper: Phaser.GameObjects.Sprite;
   private readonly carrot: Phaser.GameObjects.Sprite;
   private currentState: RunnerState | null = null;
+  private attacking = false;
 
   constructor(scene: Phaser.Scene) {
     // Origin (0, 1) is the sprite's bottom-left, matching libGDX actor
@@ -78,7 +79,8 @@ export class PlayerView {
    * @param worldX Interpolated centre of the collision box, in sim coordinates.
    * @param feetY  Interpolated feet height, in sim coordinates (Y-up).
    */
-  update(worldX: number, feetY: number, state: RunnerState): void {
+  update(worldX: number, feetY: number, state: RunnerState, attacking = false): void {
+    this.setAttacking(attacking);
     this.setState(state);
 
     // The sim tracks the feet; the art hangs 16 px below that, because the
@@ -100,8 +102,23 @@ export class PlayerView {
     if (state === this.currentState) return;
     this.currentState = state;
 
-    this.pepper.play(PEPPER_ANIMATION[state], true);
+    // The original had four ATTACK_* states mirroring the movement ones; the
+    // attack animation simply replaces the body while the swing lasts.
+    if (!this.attacking) this.pepper.play(PEPPER_ANIMATION[state], true);
     this.carrot.play(CARROT_ANIMATION[state], true);
+  }
+
+  private setAttacking(attacking: boolean): void {
+    if (attacking === this.attacking) return;
+    this.attacking = attacking;
+
+    if (attacking) {
+      this.pepper.play('pepper_attack', true);
+      return;
+    }
+
+    const state = this.currentState ?? 'running';
+    this.pepper.play(PEPPER_ANIMATION[state], true);
   }
 
   setVisible(visible: boolean): void {

@@ -1,10 +1,13 @@
 import Phaser from 'phaser';
 import { PLAYER_SCREEN_X } from '@/config/constants';
-import { AUTOPILOT, COLORS, DEBUG, START_X } from '@/config/display';
+import { AUTOPILOT, COLORS, DEBUG, START_CHARGED, START_X } from '@/config/display';
 import { DebugOverlay } from '@/debug/DebugOverlay';
+import { AbilityView } from '@/entities/AbilityView';
 import { PlayerView } from '@/entities/PlayerView';
+import { AbilityBar } from '@/hud/AbilityBar';
 import { Hud, scoreOf } from '@/hud/Hud';
 import { loadSave, saveRun } from '@/save/store';
+import { ABILITIES, AbilitySystem, type AbilitySlot } from '@/sim/abilities';
 import { shouldJump } from '@/sim/autopilot';
 import { resolveContacts } from '@/sim/entities';
 import { FixedStepper } from '@/sim/FixedStepper';
@@ -68,6 +71,9 @@ export class GameScene extends Phaser.Scene {
   private backdrop!: Phaser.GameObjects.TileSprite;
   private groundView!: GroundView;
   private entityView!: EntityView;
+  private abilities!: AbilitySystem;
+  private abilityView!: AbilityView;
+  private abilityBar!: AbilityBar;
   private hud!: Hud;
 
   private levels!: LevelData;
@@ -112,8 +118,11 @@ export class GameScene extends Phaser.Scene {
     this.groundView = new GroundView(this, GROUND_TEXTURE);
     this.entityView = new EntityView(this);
     this.player = new PlayerView(this);
+    this.abilities = new AbilitySystem();
+    this.abilityView = new AbilityView(this);
     this.overlay = new DebugOverlay(this, DEBUG);
     this.hud = new Hud(this, loadSave().bestDistance);
+    this.abilityBar = new AbilityBar(this, (slot) => this.castAbility(slot));
 
     this.banner = this.add
       .text(this.scale.width / 2, 150, '', {
@@ -138,6 +147,12 @@ export class GameScene extends Phaser.Scene {
       keyboard.on('keydown-W', this.onJump, this);
       keyboard.on('keydown-R', this.restart, this);
       keyboard.on('keydown-BACKTICK', () => this.overlay.toggle());
+
+      // The original's bindings: V for the free melee, then Y, X, C.
+      keyboard.on('keydown-V', () => this.castAbility(0));
+      keyboard.on('keydown-Y', () => this.castAbility(1));
+      keyboard.on('keydown-X', () => this.castAbility(2));
+      keyboard.on('keydown-C', () => this.castAbility(3));
     }
 
     // Touch and mouse: anywhere on the canvas jumps, or restarts once dead.
@@ -152,10 +167,50 @@ export class GameScene extends Phaser.Scene {
     this.runner.jump();
   }
 
+  /**
+   * Let the bot use spells too, so a hands-off run exercises them.
+   *
+   * Deliberately greedy — it fires whatever is charged rather than waiting for
+   * a good moment. That makes it a demonstration and a smoke test, not a
+   * display of tactics.
+   */
+  private autoCast(): void {
+    if (this.abilities.runningSlot !== null) return;
+
+    for (const slot of [3, 2, 1, 0] as const) {
+      if (!this.abilities.isReady(slot)) continue;
+      // Only bother with the free melee when something is actually near.
+      if (slot === 0 && !this.enemyNearby()) continue;
+      this.abilities.activate(slot, this.runner, this.stream.activeEntities);
+      return;
+    }
+  }
+
+  private enemyNearby(): boolean {
+    for (const entity of this.stream.activeEntities) {
+      if (entity.kind !== 'enemy' || !entity.alive) continue;
+      if (Math.abs(entity.x - this.runner.x) < 200) return true;
+    }
+    return false;
+  }
+
+  private castAbility(slot: AbilitySlot): void {
+    if (this.runner.isDead) return;
+    this.abilities.activate(slot, this.runner, this.stream.activeEntities);
+  }
+
   private restart(): void {
     const startX = START_X ?? 0;
 
     this.runner.reset(startX, GROUND_Y);
+    this.abilities.reset();
+    if (START_CHARGED) {
+      for (const def of ABILITIES) {
+        for (let i = 0; i < def.cost; i += 1) {
+          if (def.potion !== null) this.abilities.chargeFromPotion(def.potion);
+        }
+      }
+    }
     this.stepper.reset();
     this.chunks.clear();
     this.entityView.clear();
@@ -178,7 +233,7 @@ export class GameScene extends Phaser.Scene {
     this.banner.setText('');
   }
 
-  override update(_time: number, delta: number): void {
+  override update(time: number, delta: number): void {
     const dtSeconds = delta / 1000;
 
     this.streamChunks();
@@ -188,8 +243,17 @@ export class GameScene extends Phaser.Scene {
     const steps = this.stepper.advance(dtSeconds, (dt) => {
       previous = this.runner.snapshot();
       if (AUTOPILOT && shouldJump(this.runner, this.platforms)) this.runner.jump();
+      if (AUTOPILOT) this.autoCast();
+
+      // Time Distortion drives the runner rather than the world, since here it
+      // is the player that moves.
+      this.runner.speedFactor = this.abilities.speedFactor;
       this.runner.step(dt, this.platforms);
-      resolveContacts(this.runner, this.stream.activeEntities);
+
+      const contact = resolveContacts(this.runner, this.stream.activeEntities);
+      for (const potion of contact.potions) this.abilities.chargeFromPotion(potion.name);
+
+      this.abilities.update(dt, this.runner, this.stream.activeEntities);
       this.measureArc(dt);
     });
 
@@ -202,10 +266,12 @@ export class GameScene extends Phaser.Scene {
 
     this.updateCamera(worldX, worldY, dtSeconds);
 
-    this.player.update(worldX, worldY, current.state);
+    this.player.update(worldX, worldY, current.state, this.abilities.runningSlot === 0);
     this.player.setDead(this.runner.isDead);
     this.entityView.update();
+    this.abilityView.update(this.abilities.activeEffects, time);
     this.hud.update(this.runner.distance, this.runner.health);
+    this.abilityBar.update(this.abilities.energy, this.abilities.runningSlot);
 
     this.overlay.draw(
       {

@@ -32,6 +32,14 @@ export class Runner {
   state: RunnerState = 'running';
   health = MAX_HEALTH;
   deathCause: DeathCause = null;
+  /**
+   * Multiplier on forward speed, driven by Time Distortion.
+   *
+   * The original applied this to the world scroll (`WorldStage.speedFactor`);
+   * since the player moves and the world stays put here, it applies to the
+   * player instead. Same result on screen.
+   */
+  speedFactor = 1;
 
   private grounded = true;
   private airJumpsLeft = MAX_AIR_JUMPS;
@@ -90,6 +98,7 @@ export class Runner {
     this.state = 'running';
     this.health = MAX_HEALTH;
     this.deathCause = null;
+    this.speedFactor = 1;
     this.grounded = true;
     this.airJumpsLeft = MAX_AIR_JUMPS;
     this.coyoteTimer = 0;
@@ -138,7 +147,7 @@ export class Runner {
     if (this.state === 'dying') return;
 
     const previousX = this.x;
-    this.x += RUN_SPEED * dt;
+    this.x += RUN_SPEED * this.speedFactor * dt;
 
     const prevFeet = this.y;
     const wasGrounded = this.grounded;

@@ -42,6 +42,14 @@ export const AUTOPILOT = params.get('autopilot') === '1';
  * exists now, and what makes inspecting a specific generated chunk practical
  * in M3.
  */
+/**
+ * `?charged=1` starts every ability fully charged.
+ *
+ * Otherwise a spell can only be seen after collecting the potions for it, which
+ * makes checking the effects tedious.
+ */
+export const START_CHARGED = params.get('charged') === '1';
+
 export const START_X: number | null = (() => {
   const raw = params.get('x');
   if (raw === null) return null;
