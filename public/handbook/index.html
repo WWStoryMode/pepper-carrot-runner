@@ -1,0 +1,1472 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Anatomy of a Runner</title>
+    <meta
+      name="description"
+      content="How a 2D endless runner is actually put together — written for designers, with every measurement taken from a real, shipped game."
+    />
+    <meta name="theme-color" content="#0E040D" />
+    <meta name="color-scheme" content="light dark" />
+
+    <link rel="icon" href="../favicon.png" type="image/png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Anatomy of a Runner" />
+    <meta
+      property="og:description"
+      content="How a 2D endless runner is actually put together — written for designers, with every measurement taken from a real, shipped game."
+    />
+    <meta property="og:image" content="../social.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <style>
+      /* Minimal reset. The artifact host used to supply one; this page is now
+         served on its own from GitHub Pages, so it carries its own. */
+      *, *::before, *::after { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body { margin: 0; }
+      img, svg { max-width: 100%; height: auto; }
+      table { border-collapse: collapse; }
+    </style>
+
+    <style>
+      /* ---- tokens: light is the base set ---------------------------------- */
+      :root {
+        --ground: #F5EFE3;
+        --raise: #EDE3D2;
+        --sink: #E3D6C0;
+        --ink: #1B0C1A;
+        --body: #3A2A38;
+        --muted: #75636F;
+        --rule: #D3C3AE;
+        --tan: #8A5227;
+        --amber: #A65B05;
+        --amber-soft: #C98A2E;
+        --shadow: 0 1px 2px rgba(27, 12, 26, .07), 0 8px 24px rgba(27, 12, 26, .06);
+    
+        --display: "Hoefler Text", Baskerville, "Baskerville Old Face", Palatino, "Palatino Linotype", Georgia, serif;
+        --read: Charter, "Iowan Old Style", "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    
+        --col: 66ch;
+      }
+    
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --ground: #0E040D;
+          --raise: #190A18;
+          --sink: #241026;
+          --ink: #F6EEE1;
+          --body: #DCCDBE;
+          --muted: #9A8794;
+          --rule: #3A2338;
+          --tan: #D0A381;
+          --amber: #FFAC0E;
+          --amber-soft: #C98A2E;
+          --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35);
+        }
+      }
+    
+      :root[data-theme="dark"] {
+        --ground: #0E040D;
+        --raise: #190A18;
+        --sink: #241026;
+        --ink: #F6EEE1;
+        --body: #DCCDBE;
+        --muted: #9A8794;
+        --rule: #3A2338;
+        --tan: #D0A381;
+        --amber: #FFAC0E;
+        --amber-soft: #C98A2E;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35);
+      }
+    
+      /* ---- base ------------------------------------------------------------ */
+      * { box-sizing: border-box; }
+    
+      body {
+        background: var(--ground);
+        color: var(--body);
+        font-family: var(--read);
+        font-size: 18px;
+        line-height: 1.65;
+        margin: 0;
+        padding: 0 24px 96px;
+        -webkit-font-smoothing: antialiased;
+      }
+    
+      .wrap { max-width: var(--col); margin: 0 auto; }
+    
+      h1, h2, h3 { font-family: var(--display); color: var(--ink); text-wrap: balance; font-weight: 600; }
+    
+      p, ul, ol { margin: 0 0 1.15em; }
+      li { margin-bottom: .4em; }
+    
+      a { color: var(--amber); text-underline-offset: 2px; text-decoration-thickness: 1px; }
+      a:focus-visible, button:focus-visible {
+        outline: 2px solid var(--amber);
+        outline-offset: 3px;
+        border-radius: 2px;
+      }
+    
+      strong { color: var(--ink); font-weight: 600; }
+      em { color: var(--tan); font-style: italic; }
+    
+      /* ---- masthead -------------------------------------------------------- */
+      header.mast {
+        max-width: var(--col);
+        margin: 0 auto;
+        padding: 88px 0 44px;
+        border-bottom: 1px solid var(--rule);
+      }
+    
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 22px;
+      }
+    
+      h1 {
+        font-size: clamp(40px, 8vw, 66px);
+        line-height: 1.02;
+        letter-spacing: -.02em;
+        margin: 0 0 20px;
+      }
+    
+      .standfirst {
+        font-size: 21px;
+        line-height: 1.5;
+        color: var(--body);
+        margin: 0 0 28px;
+      }
+    
+      .mast-meta {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        align-items: center;
+      }
+    
+      /* ---- contents -------------------------------------------------------- */
+      nav.toc {
+        max-width: var(--col);
+        margin: 0 auto;
+        padding: 36px 0 12px;
+      }
+    
+      nav.toc ol {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 2px 28px;
+        counter-reset: toc;
+      }
+    
+      nav.toc li { margin: 0; counter-increment: toc; }
+    
+      nav.toc a {
+        display: flex;
+        gap: 12px;
+        padding: 7px 0;
+        text-decoration: none;
+        color: var(--body);
+        border-bottom: 1px solid transparent;
+        font-size: 16px;
+      }
+      nav.toc a::before {
+        content: counter(toc, decimal-leading-zero);
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--amber-soft);
+        padding-top: 4px;
+      }
+      nav.toc a:hover { color: var(--ink); border-bottom-color: var(--rule); }
+    
+      /* ---- sections -------------------------------------------------------- */
+      section { max-width: var(--col); margin: 0 auto; padding-top: 68px; }
+    
+      .part {
+        max-width: var(--col);
+        margin: 84px auto 0;
+        padding-top: 30px;
+        border-top: 2px solid var(--tan);
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+        color: var(--tan);
+      }
+    
+      h2 {
+        font-size: clamp(27px, 4.5vw, 35px);
+        line-height: 1.15;
+        letter-spacing: -.015em;
+        margin: 0 0 6px;
+      }
+    
+      .kicker {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 14px;
+      }
+    
+      h3 {
+        font-size: 20px;
+        margin: 34px 0 8px;
+        letter-spacing: -.005em;
+      }
+    
+      /* ---- spec strip: the measurement component --------------------------- */
+      .spec {
+        margin: 26px 0;
+        border-top: 2px solid var(--tan);
+        border-bottom: 1px solid var(--rule);
+        padding: 2px 0 0;
+      }
+    
+      .spec-title {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 10px 0 4px;
+      }
+    
+      .spec-rows { display: grid; gap: 0; }
+    
+      .spec-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 10px 18px;
+        align-items: baseline;
+        padding: 9px 0;
+        border-top: 1px solid var(--rule);
+      }
+    
+      .spec-row .label { font-size: 15.5px; color: var(--body); }
+    
+      .spec-row .val {
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
+        font-size: 15px;
+        color: var(--ink);
+        font-weight: 600;
+        text-align: right;
+        min-width: 8ch;
+      }
+    
+      .spec-row .val.two {
+        color: var(--amber);
+        min-width: 8ch;
+      }
+    
+      /* Rows carrying one value rather than a single/double pair. */
+      .spec-row.single { grid-template-columns: 1fr auto; }
+      .spec-row.single .val { color: var(--amber); }
+    
+      .spec-head {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 10px 18px;
+        padding-bottom: 7px;
+      }
+      .spec-head span {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-align: right;
+        min-width: 8ch;
+      }
+      .spec-head span:first-child { text-align: left; }
+    
+      .spec-note {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        padding: 9px 0 11px;
+      }
+    
+      /* ---- diagrams -------------------------------------------------------- */
+      figure {
+        margin: 30px 0;
+        padding: 0;
+      }
+    
+      .diagram {
+        background: var(--raise);
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        padding: 26px 22px;
+        overflow-x: auto;
+      }
+    
+      figcaption {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 10px;
+        line-height: 1.5;
+      }
+    
+      .flow {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        min-width: min-content;
+      }
+    
+      .node {
+        flex: 1 1 0;
+        min-width: 132px;
+        background: var(--ground);
+        border: 1px solid var(--rule);
+        border-radius: 2px;
+        padding: 13px 14px;
+        text-align: center;
+      }
+    
+      .node .n-title {
+        font-size: 15px;
+        color: var(--ink);
+        font-family: var(--display);
+        display: block;
+        line-height: 1.25;
+      }
+    
+      .node .n-sub {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        display: block;
+        margin-top: 5px;
+        line-height: 1.4;
+      }
+    
+      .node.accent { border-color: var(--tan); }
+      .node.accent .n-title { color: var(--amber); }
+    
+      .arrow {
+        flex: 0 0 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--tan);
+        font-family: var(--mono);
+        font-size: 15px;
+      }
+    
+      .arrow.back {
+        flex-basis: 100%;
+        justify-content: center;
+        padding-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+    
+      /* stacked / layered diagram */
+      .layers { display: grid; gap: 12px; min-width: min-content; }
+    
+      .layer {
+        border: 1px solid var(--rule);
+        border-radius: 2px;
+        padding: 15px 17px;
+        background: var(--ground);
+      }
+      .layer.rules { border-left: 3px solid var(--amber); }
+      .layer.view { border-left: 3px solid var(--tan); }
+    
+      .layer h4 {
+        margin: 0 0 9px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: .13em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 400;
+      }
+    
+      .layer ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px 9px;
+      }
+    
+      .layer li {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--body);
+        background: var(--sink);
+        padding: 4px 9px;
+        border-radius: 2px;
+      }
+    
+      .between {
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--muted);
+        letter-spacing: .04em;
+      }
+    
+      /* ramp diagram */
+      .ramp { display: grid; gap: 10px; min-width: min-content; }
+      .ramp-row {
+        display: grid;
+        grid-template-columns: 9ch 1fr;
+        gap: 14px;
+        align-items: center;
+      }
+      .ramp-row .m {
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+        color: var(--amber);
+        text-align: right;
+      }
+      .ramp-row .bar {
+        height: 26px;
+        background: var(--sink);
+        border-radius: 2px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        padding: 0 11px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--body);
+      }
+      .ramp-row .bar span { position: relative; }
+      .ramp-row .bar::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: var(--fill, 20%);
+        background: var(--tan);
+        opacity: .28;
+        border-radius: 2px;
+      }
+    
+      /* ---- tables ---------------------------------------------------------- */
+      .table-wrap { overflow-x: auto; margin: 24px 0; }
+    
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 420px;
+        font-size: 15.5px;
+      }
+    
+      th {
+        text-align: left;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 400;
+        padding: 0 14px 9px 0;
+        border-bottom: 1px solid var(--tan);
+      }
+    
+      td {
+        padding: 10px 14px 10px 0;
+        border-bottom: 1px solid var(--rule);
+        vertical-align: top;
+        color: var(--body);
+      }
+    
+      td:first-child { color: var(--ink); }
+      td.num {
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        padding-right: 0;
+        color: var(--amber);
+        white-space: nowrap;
+      }
+      th.num { text-align: right; padding-right: 0; }
+    
+      /* ---- callouts -------------------------------------------------------- */
+      .note {
+        margin: 26px 0;
+        padding: 16px 20px;
+        background: var(--raise);
+        border-left: 3px solid var(--amber);
+        border-radius: 0 2px 2px 0;
+      }
+      .note p { margin: 0; font-size: 16.5px; }
+      .note p + p { margin-top: .7em; }
+      .note .tag {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        color: var(--amber);
+        display: block;
+        margin-bottom: 7px;
+      }
+    
+      blockquote {
+        margin: 24px 0;
+        padding: 0 0 0 20px;
+        border-left: 2px solid var(--rule);
+        color: var(--muted);
+        font-style: italic;
+      }
+      blockquote p { margin: 0; }
+    
+      code {
+        font-family: var(--mono);
+        font-size: .87em;
+        background: var(--sink);
+        padding: 1px 5px;
+        border-radius: 2px;
+        color: var(--ink);
+      }
+    
+      pre {
+        background: var(--raise);
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        padding: 15px 17px;
+        overflow-x: auto;
+        margin: 22px 0;
+      }
+      pre code { background: none; padding: 0; font-size: 13.5px; line-height: 1.6; color: var(--body); }
+    
+      /* ---- checklist ------------------------------------------------------- */
+      ul.check { list-style: none; padding: 0; }
+      ul.check li {
+        padding-left: 30px;
+        position: relative;
+        margin-bottom: .55em;
+      }
+      ul.check li::before {
+        content: "☐";
+        position: absolute;
+        left: 0;
+        top: -1px;
+        color: var(--amber-soft);
+        font-family: var(--mono);
+      }
+    
+      /* ---- footer ---------------------------------------------------------- */
+      footer {
+        max-width: var(--col);
+        margin: 90px auto 0;
+        padding-top: 30px;
+        border-top: 2px solid var(--tan);
+        font-size: 15.5px;
+        color: var(--muted);
+      }
+      footer h3 { margin-top: 0; }
+    
+      .cta {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: .04em;
+        border: 1px solid var(--tan);
+        color: var(--ink);
+        padding: 11px 20px;
+        border-radius: 2px;
+        text-decoration: none;
+        margin: 6px 10px 6px 0;
+        background: var(--raise);
+      }
+      .cta:hover { border-color: var(--amber); color: var(--amber); }
+    
+      @media (max-width: 640px) {
+        body { font-size: 17px; padding: 0 18px 72px; }
+        header.mast { padding-top: 56px; }
+        .spec-row { grid-template-columns: 1fr auto auto; }
+        .flow { flex-direction: column; }
+        .arrow { flex-basis: auto; padding: 5px 0; transform: rotate(90deg); }
+      }
+    
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; animation: none !important; }
+      }
+    </style>
+  </head>
+
+  <body>
+    
+    <header class="mast">
+      <p class="eyebrow">A field guide, drawn from one finished game</p>
+      <h1>Anatomy of a Runner</h1>
+      <p class="standfirst">
+        How a 2D game is actually put together — written for designers, with no code to read.
+        Every number here was measured from a real, shipped game rather than idealised.
+      </p>
+      <div class="mast-meta">
+        <span>Pepper&amp;Carrot Runner</span>
+        <span>·</span>
+        <span>Phaser 4 · TypeScript</span>
+        <span>·</span>
+        <span>Art CC-BY, David Revoy &amp; Anna Dorokhova</span>
+      </div>
+    </header>
+    
+    <nav class="toc" aria-label="Contents">
+      <ol>
+        <li><a href="#loop">The loop</a></li>
+        <li><a href="#clocks">Two clocks</a></li>
+        <li><a href="#split">Rules and picture</a></li>
+        <li><a href="#art">Sprites and atlases</a></li>
+        <li><a href="#levels">Levels from tiles</a></li>
+        <li><a href="#collision">Collision</a></li>
+        <li><a href="#camera">The camera</a></li>
+        <li><a href="#states">States</a></li>
+        <li><a href="#contract">The runner's contract</a></li>
+        <li><a href="#envelope">The jump envelope</a></li>
+        <li><a href="#reaction">Reaction budget</a></li>
+        <li><a href="#forgiveness">Forgiveness</a></li>
+        <li><a href="#failure">Legible failure</a></li>
+        <li><a href="#difficulty">Difficulty as a curve</a></li>
+        <li><a href="#validation">Proving levels possible</a></li>
+        <li><a href="#assets">What art you need</a></li>
+        <li><a href="#systems">What must be built</a></li>
+        <li><a href="#order">The order to build in</a></li>
+        <li><a href="#reading">Where to read next</a></li>
+      </ol>
+    </nav>
+    
+    <p class="part">Part one — the parts every 2D game has</p>
+    
+    <section id="loop">
+      <p class="kicker">01</p>
+      <h2>The loop</h2>
+      <p>
+        A game is a program that never finishes. It does three things, over and over, about sixty
+        times a second.
+      </p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="flow">
+            <div class="node"><span class="n-title">Read input</span><span class="n-sub">is a key down?</span></div>
+            <div class="arrow">→</div>
+            <div class="node accent"><span class="n-title">Update the world</span><span class="n-sub">move · collide · score</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Draw</span><span class="n-sub">pixels on screen</span></div>
+            <div class="arrow back">↺ repeat, ~16 ms per pass</div>
+          </div>
+        </div>
+        <figcaption>Everything else is detail hung off these three steps.</figcaption>
+      </figure>
+    
+      <p>
+        Each pass is a <strong>frame</strong>. At 60 frames per second you have about
+        <strong>16 milliseconds</strong> for all three. Go over budget and the game stutters.
+      </p>
+      <p>
+        The consequence designers should hold onto: <strong>nothing in a game is continuous.</strong>
+        A jump is not a smooth arc, it is 51 discrete positions. Two things touching is a test
+        performed at instants — which is why a fast object can pass through a wall between two frames
+        without ever being inside it.
+      </p>
+    </section>
+    
+    <section id="clocks">
+      <p class="kicker">02</p>
+      <h2>Why the clock is separate from the picture</h2>
+      <p>
+        A real bug from the original 2016 game, and the most important technical idea here.
+      </p>
+      <p>
+        It moved Pepper vertically <em>once per drawn frame</em>, with no reference to how much time
+        had passed. On a 60&nbsp;Hz monitor that gives the intended jump. On a 144&nbsp;Hz monitor the
+        code runs 144 times a second, gravity applies more than twice as often, and the jump collapses
+        to a hop. <strong>The game played differently on different monitors.</strong> Not looked —
+        played.
+      </p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="flow">
+            <div class="node"><span class="n-title">Frame arrives</span><span class="n-sub">however long it took</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Bank the time</span><span class="n-sub">add to a running total</span></div>
+            <div class="arrow">→</div>
+            <div class="node accent"><span class="n-title">Step 1/60&nbsp;s</span><span class="n-sub">as many as are owed</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Draw</span><span class="n-sub">smoothed between steps</span></div>
+          </div>
+        </div>
+        <figcaption>The simulation advances in identical slices. Drawing happens whenever the display
+          is ready. A fast monitor draws more often; it does not think more often.</figcaption>
+      </figure>
+    
+      <div class="note">
+        <span class="tag">Why a designer should care</span>
+        <p>
+          Your tuning values are only meaningful if the simulation clock is fixed. Otherwise "jump
+          height" is not a property of your game — it is a property of the player's hardware.
+        </p>
+      </div>
+    
+      <p>
+        There is a second reason. If the game is paused for two seconds — a background tab, a laptop
+        lid — should it then race through two seconds of missed hazards? Almost never. This game drops
+        the backlog and resumes in real time, so you do not come back to find you died during lunch.
+      </p>
+    </section>
+    
+    <section id="split">
+      <p class="kicker">03</p>
+      <h2>The rules, and the picture</h2>
+      <p>
+        The most useful structural decision in this project: <strong>the rules of the game are kept
+        separate from what it looks like.</strong>
+      </p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="layers">
+            <div class="layer rules">
+              <h4>The rules — no screen exists here</h4>
+              <ul>
+                <li>where is Pepper?</li>
+                <li>did she land?</li>
+                <li>did she take damage?</li>
+                <li>is the run over?</li>
+              </ul>
+            </div>
+            <p class="between">↓ &nbsp; positions and states flow down &nbsp; ↓</p>
+            <div class="layer view">
+              <h4>The picture — draws what it is told</h4>
+              <ul>
+                <li>draw her there</li>
+                <li>play the landing animation</li>
+                <li>flash red</li>
+                <li>show the game-over panel</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <figcaption>The arrow only goes one way. Nothing about the drawing feeds back into the rules.</figcaption>
+      </figure>
+    
+      <p>Why it matters to a designer:</p>
+      <ul>
+        <li><strong>The rules can be tested without running the game.</strong> This project verifies
+          its jump height by arithmetic in under a second — no browser, no waiting, no looking.</li>
+        <li><strong>You can change the look without touching the game.</strong> Reskinning risks
+          nothing.</li>
+        <li><strong>Bugs get an address.</strong> "Pepper died unfairly" is a rules problem. "Pepper
+          died and the animation was wrong" is a picture problem. You know which conversation to
+          have.</li>
+      </ul>
+    </section>
+    
+    <section id="art">
+      <p class="kicker">04</p>
+      <h2>Sprites, atlases and animation</h2>
+      <p>
+        A <strong>sprite</strong> is an image drawn at a position. An <strong>animation</strong> is a
+        list of images shown in sequence, each with a duration. This project transcribes the
+        original's timings exactly — including the detail that Carrot's run is faster than Pepper's,
+        because a small cat takes quicker steps.
+      </p>
+    
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Animation</th><th class="num">Frames</th><th class="num">Sec / frame</th><th>Playback</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Pepper run</td><td class="num">10</td><td class="num">0.079</td><td>loop</td></tr>
+            <tr><td>Pepper jump</td><td class="num">3</td><td class="num">0.144</td><td>out and back</td></tr>
+            <tr><td>Pepper fall</td><td class="num">3</td><td class="num">0.140</td><td>out and back</td></tr>
+            <tr><td>Pepper attack</td><td class="num">7</td><td class="num">0.075</td><td>once</td></tr>
+            <tr><td>Pepper idle</td><td class="num">4</td><td class="num">0.130</td><td>out and back</td></tr>
+            <tr><td>Carrot run</td><td class="num">10</td><td class="num">0.059</td><td>loop</td></tr>
+          </tbody>
+        </table>
+      </div>
+    
+      <h3>Why art gets packed</h3>
+      <p>
+        Sending an image to the graphics card is cheap. <em>Switching</em> between images is
+        expensive. So at build time all 140 sprite files are packed into a couple of large sheets — a
+        <strong>texture atlas</strong> — with a data file recording where each frame landed.
+      </p>
+      <p>
+        The original made an instructive mistake here. Its atlas was packed without regard to
+        grouping, so a single run cycle was split across three different sheets — meaning the most
+        frequently drawn animation in the game forced a switch on nearly every frame.
+        <strong>Pack related frames together.</strong>
+      </p>
+    
+      <div class="note">
+        <span class="tag">Practical</span>
+        <p>
+          Hand your programmer loose, well-named source files — <code>pepper_run_01.png</code> — and
+          let the build combine them. Never hand over a hand-assembled sheet; you will want to change
+          one frame later.
+        </p>
+      </div>
+    </section>
+    
+    <section id="levels">
+      <p class="kicker">05</p>
+      <h2>Levels made of tiles</h2>
+      <p>
+        Rather than one enormous image, levels are built from a grid of small squares —
+        <strong>tiles</strong>, 95×95 pixels here. A level is then a spreadsheet of numbers saying
+        which tile goes where. Compact, editable, and it gives you collision almost free: the game
+        already knows which cells are solid.
+      </p>
+      <p>
+        Levels were authored in <a href="https://www.mapeditor.org/">Tiled</a>, the standard free tile
+        editor. The original did something clever worth copying: enemies, potions and hazards are
+        <strong>not</strong> separate objects — they are tiles on hidden layers, where each tile type
+        carries properties like <code>type: enemy</code> or <code>obstacle: deadly</code>.
+      </p>
+      <div class="note">
+        <span class="tag">Practical</span>
+        <p>
+          This means your level editor is the only tool you need. Painting a spider is the same
+          gesture as painting a brick.
+        </p>
+      </div>
+    </section>
+    
+    <section id="collision">
+      <p class="kicker">06</p>
+      <h2>Collision</h2>
+      <p>
+        Nearly every 2D game answers "are these touching?" with <strong>boxes</strong> — not the
+        character's outline, a rectangle approximating it. Pepper's sprite is 380 pixels tall; the box
+        that actually collides is 115×208 and sits inside her. That is standard, and generous: a
+        hitbox slightly smaller than the character makes a game feel fair, because near-misses read as
+        misses.
+      </p>
+      <p>Two ideas do most of the work in a runner.</p>
+      <h3>One-way platforms</h3>
+      <p>
+        You jump up <em>through</em> a platform and land on top of it, but never fall through from
+        above. Nearly every platformer does this, because the alternative — bonking your head on every
+        ledge — feels terrible.
+      </p>
+      <h3>Sweeping</h3>
+      <p>
+        Testing only "where is she now" misses fast movement: at full falling speed Pepper covers 26
+        pixels between frames and can pass clean through a platform. So the test covers the whole path
+        travelled since the last frame, not just the endpoint. The original never solved this and
+        instead capped falling speed so it could not happen — a workaround its author labelled with a
+        <code>FIXME</code>.
+      </p>
+    </section>
+    
+    <section id="camera">
+      <p class="kicker">07</p>
+      <h2>The camera</h2>
+      <p>
+        The camera decides what the player can see, which makes it a design tool rather than plumbing.
+        It rarely follows the character exactly — that produces nauseating jitter. It lags, smooths,
+        and often deliberately looks <em>ahead</em>.
+      </p>
+      <p>A real note from this project's playtesting:</p>
+      <blockquote>
+        <p>"The camera is currently too close to the character and we cannot see the floor or gap when
+          we are dropping from height."</p>
+      </blockquote>
+      <p>
+        Landing was guesswork, because the player could not see where they would land. The fix was to
+        show more world and bias the view downward while falling. <strong>A camera that hides the
+        information a decision needs makes the game unfair</strong>, however good the physics
+        underneath.
+      </p>
+    </section>
+    
+    <section id="states">
+      <p class="kicker">08</p>
+      <h2>What a character is doing</h2>
+      <p>A character is in exactly one <strong>state</strong> at a time, with defined transitions.</p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="flow">
+            <div class="node"><span class="n-title">Running</span><span class="n-sub">the default</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Jumping</span><span class="n-sub">rising</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Double&nbsp;jumping</span><span class="n-sub">rising again</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Falling</span><span class="n-sub">past the top</span></div>
+            <div class="arrow back">↺ landed → Running &nbsp;·&nbsp; hit a wall, fell, or out of health → Dying</div>
+          </div>
+        </div>
+        <figcaption>Worth drawing on paper before anyone writes anything — it tells you which
+          animations you need and where each rule lives.</figcaption>
+      </figure>
+    
+      <p>
+        It also exposes design decisions. In the original you could only double-jump while
+        <em>still rising</em> — step off a ledge, or pass the top of your jump, and the second jump was
+        gone. Players read that as a bug rather than a rule. Here an air jump is available whenever you
+        have one left. One arrow on the diagram; a large difference in feel.
+      </p>
+    </section>
+    
+    <p class="part">Part two — what a runner does differently</p>
+    
+    <section id="contract">
+      <p class="kicker">09</p>
+      <h2>The contract</h2>
+      <p>
+        <strong>The player does not control moving forward. They only control jumping.</strong>
+        That is the genre, and everything follows from it.
+      </p>
+      <p>
+        Because forward motion is automatic, you cannot build a challenge around <em>going
+        somewhere</em> — the player is always going there. The only decision is <strong>when to
+        press</strong>, and the only skill is timing. So all design pressure moves into what is in
+        front of the player, and when they can see it.
+      </p>
+      <p>
+        A platformer designer asks "how do I make this jump interesting?" A runner designer asks how to
+        make the <em>timing</em> interesting, because the jump is always the same jump.
+      </p>
+      <div class="note">
+        <span class="tag">The upside</span>
+        <p>
+          This is why a runner is a superb first game. There is exactly one verb. Make it feel
+          excellent, and the entire rest of the project is content and systems rather than more
+          mechanics.
+        </p>
+      </div>
+    </section>
+    
+    <section id="envelope">
+      <p class="kicker">10</p>
+      <h2>The jump envelope</h2>
+      <p>
+        The most important idea here. <strong>Measure your jump, then design everything against that
+        measurement.</strong>
+      </p>
+    
+      <div class="spec">
+        <div class="spec-title">Pepper's jump — measured by running the simulation</div>
+        <div class="spec-head"><span>Property</span><span>Single</span><span>Double</span></div>
+        <div class="spec-rows">
+          <div class="spec-row"><span class="label">Rises to</span><span class="val">325 px</span><span class="val two">650 px</span></div>
+          <div class="spec-row"><span class="label">Airtime</span><span class="val">0.85 s</span><span class="val two">1.5 s</span></div>
+          <div class="spec-row"><span class="label">Horizontal reach</span><span class="val">340 px</span><span class="val two">600 px</span></div>
+          <div class="spec-row"><span class="label">In tiles (95 px)</span><span class="val">3.6</span><span class="val two">6.3</span></div>
+        </div>
+        <div class="spec-note">Second jump taken at the apex. Run speed 400 px/s.</div>
+      </div>
+    
+      <p>
+        Those numbers are the physical limits of your level. Every gap, every obstacle, every platform
+        height must sit inside them — not approximately, but with margin.
+      </p>
+    
+      <div class="spec">
+        <div class="spec-title">What the envelope then permits</div>
+        <div class="spec-rows">
+          <div class="spec-row single"><span class="label">Widest gap the game will generate</span><span class="val">3 tiles · 285 px</span></div>
+          <div class="spec-row single"><span class="label">Single-jump reach</span><span class="val">340 px</span></div>
+          <div class="spec-row single"><span class="label">Deliberate safety margin</span><span class="val">55 px</span></div>
+          <div class="spec-row single"><span class="label">Tallest obstacle face</span><span class="val">1 tile · 95 px</span></div>
+        </div>
+      </div>
+    
+      <p>
+        That 55-pixel margin is the whole point. A gap that is <em>exactly</em> clearable is only
+        clearable by a player who jumps at exactly the right pixel, and it feels like a trap even when
+        cleared. Obstacle faces at 95 px against a 325 px rise sit so far inside the envelope that
+        hitting one is unambiguously a mistake the player made, rather than a demand they could not
+        meet.
+      </p>
+    
+      <div class="note">
+        <span class="tag">Do this first</span>
+        <p>
+          Write your envelope on a card and pin it up. "Max gap 3 tiles, max step 1 tile." Every layout
+          decision gets checked against it. This is why the jump must be tuned <em>before</em> any
+          level is authored — every level you have already made assumes the jump you had when you made
+          it.
+        </p>
+      </div>
+    </section>
+    
+    <section id="reaction">
+      <p class="kicker">11</p>
+      <h2>The reaction budget</h2>
+      <p>The player can only respond to what they have seen. So how long do they get?</p>
+    
+      <div class="spec">
+        <div class="spec-title">Warning time</div>
+        <div class="spec-rows">
+          <div class="spec-row single"><span class="label">Visible world ahead of the player</span><span class="val">≈1,300 px</span></div>
+          <div class="spec-row single"><span class="label">Run speed</span><span class="val">400 px/s</span></div>
+          <div class="spec-row single"><span class="label">Warning available</span><span class="val">≈3.3 s</span></div>
+          <div class="spec-row single"><span class="label">Under Time Distortion, at 2.8×</span><span class="val">&lt;1.2 s</span></div>
+        </div>
+      </div>
+    
+      <p>
+        Three seconds sounds generous, but it covers <em>everything</em>: seeing the obstacle,
+        recognising it, deciding, and pressing. Human reaction to an expected visual cue is around
+        250&nbsp;ms; to something that must be identified first, considerably more.
+      </p>
+      <p>
+        So obstacles must be readable at a glance — not detailed, <em>distinguishable</em>. Deadly
+        green sludge must not resemble decorative green scenery. And note what speeding the game up
+        does to that budget: it is precisely why acceleration here is a <em>player-triggered</em>
+        spell. The player chose to make it harder, and knows it.
+      </p>
+    </section>
+    
+    <section id="forgiveness">
+      <p class="kicker">12</p>
+      <h2>Forgiveness is a feature</h2>
+      <p>
+        The biggest difference between the original and this version is invisible in a screenshot. The
+        original had <strong>no input forgiveness at all</strong>. Miss the ledge by one frame — a
+        sixtieth of a second — and you were falling with no recourse.
+      </p>
+    
+      <div class="spec">
+        <div class="spec-title">Two standard techniques</div>
+        <div class="spec-rows">
+          <div class="spec-row single"><span class="label">Coyote time — jump still works after leaving a ledge</span><span class="val">0.10 s</span></div>
+          <div class="spec-row single"><span class="label">Jump buffering — early press remembered until landing</span><span class="val">0.12 s</span></div>
+        </div>
+      </div>
+    
+      <p>
+        Coyote time is named for the cartoon coyote who stands on air until he looks down. Players
+        believe they jumped from the ledge; the game agrees. Buffering means a jump pressed slightly
+        <em>before</em> landing fires the instant she touches down, rather than being silently
+        discarded.
+      </p>
+      <p>
+        Both make the game objectively easier. Both are almost universally described by players as the
+        game feeling <em>more responsive</em> rather than easier — because they remove failures the
+        player did not believe they had earned.
+      </p>
+    
+      <div class="note">
+        <span class="tag">These are design, not bug fixes</span>
+        <p>
+          Budget for them, and tune them by feel. Both numbers above were arrived at by playing, not by
+          calculation.
+        </p>
+      </div>
+    </section>
+    
+    <section id="failure">
+      <p class="kicker">13</p>
+      <h2>Failure has to be legible</h2>
+      <p>
+        When a player dies they must know why within a fraction of a second, or the death feels
+        arbitrary and they blame the game. This project uses one rule, without exception:
+      </p>
+    
+      <div class="note">
+        <span class="tag">The rule</span>
+        <p>
+          <strong>Hearts are for things that hit <em>you</em>. Geometry is for things <em>you</em>
+          hit.</strong>
+        </p>
+      </div>
+    
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>What happened</th><th>Consequence</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Touched a fly or spider</td><td>Lose a heart</td><td>Recoverable — five chances</td></tr>
+            <tr><td>Fell down a pit</td><td>Dead</td><td>Geometry. You hit it</td></tr>
+            <tr><td>Ran into a wall</td><td>Dead</td><td>Geometry. You hit it</td></tr>
+            <tr><td>Touched the green sludge</td><td>Dead</td><td>6 damage against 5 hearts — lethal whatever your health</td></tr>
+          </tbody>
+        </table>
+      </div>
+    
+      <p>
+        That last row is inherited from the original and kept deliberately, because it is what makes
+        the sludge read as <em>poison</em> rather than as another enemy. A hazard that sometimes kills
+        you is a hazard players will gamble against.
+      </p>
+      <p>
+        The rule also settles arguments in advance. When permanent upgrades were added, one grants a
+        ghost that absorbs a hit — and the immediate question was whether it should absorb poison. No:
+        poison is the game's one unambiguous threat, and softening it would blunt the only thing that
+        is never negotiable.
+      </p>
+    </section>
+    
+    <section id="difficulty">
+      <p class="kicker">14</p>
+      <h2>Difficulty is a curve, not a list</h2>
+      <p>
+        The original's difficulty was a hand-written list of level segments, growing from five to nine.
+        Authored, finite, identical every play. An endless game needs difficulty as a
+        <strong>function of distance</strong>.
+      </p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="ramp">
+            <div class="ramp-row"><span class="m">0 m</span><span class="bar" style="--fill:8%"><span>easiest pieces only · no gaps · the opening teaches</span></span></div>
+            <div class="ramp-row"><span class="m">4,000</span><span class="bar" style="--fill:26%"><span>gaps begin, narrow</span></span></div>
+            <div class="ramp-row"><span class="m">40,000</span><span class="bar" style="--fill:78%"><span>gaps reach full width — 3 tiles</span></span></div>
+            <div class="ramp-row"><span class="m">45,000</span><span class="bar" style="--fill:100%"><span>every level piece eligible</span></span></div>
+          </div>
+        </div>
+        <figcaption>Three separate ramps, deliberately not synchronised: which pieces appear, whether
+          floors have gaps, and how wide those gaps are.</figcaption>
+      </figure>
+    
+      <p>Two details stop this feeling mechanical:</p>
+      <ul>
+        <li><strong>A couple of easy pieces stay eligible forever.</strong> Without this, difficulty
+          becomes a wall and every late run feels identical. With it, the game breathes.</li>
+        <li><strong>The same piece never appears twice in a row.</strong> The cheapest possible fix for
+          the "wait, I have seen this" feeling.</li>
+      </ul>
+      <p>
+        Selection is weighted toward the current target rather than picked flatly from everything
+        allowed — otherwise the easiest piece, always eligible, would dominate forever.
+      </p>
+    
+      <h3>Endless content from eight levels</h3>
+      <p>
+        Only a window of level exists at once: a few thousand units ahead, rather less behind. As the
+        player advances, a new piece is appended in front and pieces behind are recycled — the same
+        objects reused rather than rebuilt, which is what keeps the frame rate steady.
+      </p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="flow">
+            <div class="node"><span class="n-title">Recycled</span><span class="n-sub">behind the player</span></div>
+            <div class="arrow">→</div>
+            <div class="node accent"><span class="n-title">Active window</span><span class="n-sub">what actually exists</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><span class="n-title">Appended</span><span class="n-sub">chosen for difficulty</span></div>
+          </div>
+        </div>
+        <figcaption>The player experiences an endless cellar. The game holds a few hundred metres of it.</figcaption>
+      </figure>
+    
+      <div class="note">
+        <span class="tag">Where the leverage is</span>
+        <p>
+          Eight well-made pieces plus a good selector produce more play than twenty pieces in a fixed
+          order. Spend your effort making each piece <em>composable</em> — able to follow anything and
+          be followed by anything — rather than making more of them.
+        </p>
+      </div>
+    </section>
+    
+    <section id="validation">
+      <p class="kicker">15</p>
+      <h2>Proving the levels are possible</h2>
+      <p>
+        If levels are assembled by machine, the machine can generate something impossible. A gap wider
+        than the jump is not a difficulty spike; it is a dead end.
+      </p>
+      <p>
+        So this project has an <strong>autopilot</strong> — a bot that plays the game, jumping where
+        the course requires it. A course it cannot clear is a failing test rather than a furious
+        player. It earned its keep immediately by finding three genuine design flaws:
+      </p>
+      <ol>
+        <li><strong>Gaps were placed without looking up.</strong> The analysis checked the floor was
+          clear but not what was <em>above</em> it — so a gap could appear under a low shelf, with
+          nowhere to jump.</li>
+        <li><strong>The wall test ignored the player's height.</strong> It asked whether Pepper could
+          get over an obstacle without accounting for her being 208 units tall.</li>
+        <li><strong>Air jumps aimed at unreachable shelves.</strong> The bot spent its second jump
+          reaching for a platform outside the envelope, and fell.</li>
+      </ol>
+      <p>
+        Every one would have shipped. None would have been caught by a conventional test, because each
+        was about the <em>interaction</em> of individually correct pieces.
+      </p>
+      <div class="note">
+        <span class="tag">Practical</span>
+        <p>
+          If any part of your content is generated, build something that plays it. It does not need to
+          play well — it needs to play at all, and to complain when it cannot.
+        </p>
+      </div>
+    </section>
+    
+    <p class="part">Part three — planning your own</p>
+    
+    <section id="assets">
+      <p class="kicker">16</p>
+      <h2>What art you actually need</h2>
+      <p>The complete inventory of this game. It is less than most people expect.</p>
+    
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Category</th><th class="num">Count</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr><td>Character sprites</td><td class="num">140</td><td>Every frame of every animation, every character and enemy</td></tr>
+            <tr><td>Tilesets</td><td class="num">5</td><td>The blocks levels are painted from</td></tr>
+            <tr><td>Backdrops</td><td class="num">7</td><td>Full-screen backgrounds</td></tr>
+            <tr><td>Levels</td><td class="num">8</td><td>Tiled maps</td></tr>
+            <tr><td>Bitmap fonts</td><td class="num">8</td><td>4 fonts, each an image plus a data file</td></tr>
+            <tr><td>Particle effects</td><td class="num">3</td><td>Sparks, clouds, circles</td></tr>
+            <tr><td>Audio</td><td class="num">0</td><td>The original shipped none at all</td></tr>
+          </tbody>
+        </table>
+      </div>
+    
+      <h3>The character set is bigger than you think</h3>
+      <p>
+        This is what designers most often under-scope. One player character needs every state the game
+        can be in — <strong>seven states, thirty frames, for one character</strong>. Then the companion
+        needs the same set minus attack.
+      </p>
+    
+      <div class="spec">
+        <div class="spec-title">One character, fully animated</div>
+        <div class="spec-rows">
+          <div class="spec-row single"><span class="label">Idle — title screen, waiting</span><span class="val">4</span></div>
+          <div class="spec-row single"><span class="label">Run — the default</span><span class="val">10</span></div>
+          <div class="spec-row single"><span class="label">Jump — rising</span><span class="val">3</span></div>
+          <div class="spec-row single"><span class="label">Double jump — must look different or it reads as a glitch</span><span class="val">2</span></div>
+          <div class="spec-row single"><span class="label">Fall — descending</span><span class="val">3</span></div>
+          <div class="spec-row single"><span class="label">Hit — taking damage</span><span class="val">1</span></div>
+          <div class="spec-row single"><span class="label">Attack — casting</span><span class="val">7</span></div>
+        </div>
+        <div class="spec-note">Your state diagram is your animation list. Draw it, count the boxes.</div>
+      </div>
+    
+      <p>
+        Enemies each need <strong>idle and death</strong> — 3 and 6 frames here. The death animation
+        being twice as long is not an accident: killing something is the reward, so it gets the frames.
+      </p>
+      <p>
+        Then pickups with a shared sparkle drawn behind them; tilesets separated by purpose (remember
+        enemies are <em>painted as tiles</em>, so they need tileset entries as well as sprites); UI
+        panels and buttons as <strong>9-patch</strong> images with stretchable middles, so one button
+        image serves every size; and hearts in both full and empty states.
+      </p>
+    
+      <div class="note">
+        <span class="tag">Two traps</span>
+        <p>
+          <strong>Fonts.</strong> Bitmap fonts are images of characters, and these contain only ASCII.
+          The moment you want accents or a non-Latin script they must be regenerated. Decide about
+          localisation <em>before</em> commissioning fonts.
+        </p>
+        <p>
+          <strong>Audio.</strong> The most commonly abandoned category, and it costs more than its size
+          suggests — sound is most of what makes a jump feel like a jump. The minimum is seven cues and
+          a mute toggle that is remembered.
+        </p>
+      </div>
+    </section>
+    
+    <section id="systems">
+      <p class="kicker">17</p>
+      <h2>What has to be built</h2>
+      <p>Independent of genre. Use it to sanity-check a plan or a quote.</p>
+    
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>System</th><th>What it does</th><th>Skip it if…</th></tr></thead>
+          <tbody>
+            <tr><td>Loop &amp; fixed timestep</td><td>Runs everything, consistently everywhere</td><td>Never</td></tr>
+            <tr><td>Input</td><td>Keyboard, touch, gamepad</td><td>Never</td></tr>
+            <tr><td>Rules layer</td><td>The game, separate from drawing</td><td>Never — this is the one that pays off</td></tr>
+            <tr><td>Rendering &amp; animation</td><td>Draws what the rules computed</td><td>Never</td></tr>
+            <tr><td>Asset pipeline</td><td>Packs art at build time</td><td>You have very few assets</td></tr>
+            <tr><td>Level data</td><td>Loading authored levels</td><td>Levels are entirely generated</td></tr>
+            <tr><td>Collision</td><td>What touches what</td><td>Never</td></tr>
+            <tr><td>Camera</td><td>What the player sees</td><td>The screen is one fixed frame</td></tr>
+            <tr><td>Streaming / spawning</td><td>Content in, content recycled</td><td>Levels are small and finite</td></tr>
+            <tr><td>Health &amp; damage</td><td>Failure states</td><td>Nothing can hurt the player</td></tr>
+            <tr><td>Abilities &amp; resources</td><td>Powers, costs, cooldowns</td><td>One verb only</td></tr>
+            <tr><td>Scoring</td><td>Numbers, personal bests</td><td>There is no reason to replay</td></tr>
+            <tr><td>Save data</td><td>Survives closing the tab</td><td>Nothing persists</td></tr>
+            <tr><td>Scenes &amp; UI</td><td>Title, pause, game over, menus</td><td>Never — and budget properly</td></tr>
+            <tr><td>Audio</td><td>Feedback you can hear</td><td>Never, and yet everyone does</td></tr>
+            <tr><td>Error handling</td><td>Something sensible when it breaks</td><td>Never, if strangers will play it</td></tr>
+          </tbody>
+        </table>
+      </div>
+    
+      <p>
+        Two that designers routinely leave out of plans and then need anyway. <strong>The shell</strong>
+        — title, pause, settings, game over — is not glamorous and is a substantial chunk of work; this
+        project spent an entire milestone on it and <em>still</em> shipped broken buttons three times.
+        And <strong>error handling</strong>: when something breaks for a stranger they see a black
+        rectangle and leave. An apology and a reload button costs an hour.
+      </p>
+    </section>
+    
+    <section id="order">
+      <p class="kicker">18</p>
+      <h2>The order to build in</h2>
+      <p>Nine milestones, each one playable on its own.</p>
+    
+      <figure>
+        <div class="diagram">
+          <div class="ramp">
+            <div class="ramp-row"><span class="m">M0</span><span class="bar" style="--fill:6%"><span>Scaffold — toolchain, licences, CI</span></span></div>
+            <div class="ramp-row"><span class="m">M1</span><span class="bar" style="--fill:18%"><span>Feel — jump physics, grey rectangles, no art</span></span></div>
+            <div class="ramp-row"><span class="m">M2</span><span class="bar" style="--fill:29%"><span>Art — atlas, animation</span></span></div>
+            <div class="ramp-row"><span class="m">M3</span><span class="bar" style="--fill:40%"><span>Content — endless streaming</span></span></div>
+            <div class="ramp-row"><span class="m">M4</span><span class="bar" style="--fill:52%"><span>Danger — enemies, pits, health</span></span></div>
+            <div class="ramp-row"><span class="m">M5</span><span class="bar" style="--fill:63%"><span>Powers — four abilities</span></span></div>
+            <div class="ramp-row"><span class="m">M6</span><span class="bar" style="--fill:74%"><span>Shell — menus, audio, camera</span></span></div>
+            <div class="ramp-row"><span class="m">M7</span><span class="bar" style="--fill:87%"><span>Depth — meta-progression</span></span></div>
+            <div class="ramp-row"><span class="m">M8</span><span class="bar" style="--fill:100%"><span>Polish — loading, deploy</span></span></div>
+          </div>
+        </div>
+        <figcaption>Ordered by risk, not by the order a player encounters things.</figcaption>
+      </figure>
+    
+      <h3>The two rules that produced this</h3>
+      <p>
+        <strong>Every milestone ends playable.</strong> Not "compiles" — playable, something a person
+        can pick up and form an opinion about. That is what makes feedback possible at every stage
+        instead of only at the end.
+      </p>
+      <p>
+        <strong>Whatever is most likely to be wrong comes first.</strong> The riskiest thing in a
+        runner is whether the jump feels good, and it is the hardest thing to retrofit. So it came
+        first — and it came <em>as grey rectangles</em>.
+      </p>
+    
+      <div class="note">
+        <span class="tag">The most transferable idea here</span>
+        <p>
+          Milestone one had no art at all. Coloured boxes jumping onto coloured boxes, tested by
+          playing it for thirty seconds and asking "does this feel right?" If it had not, changing it
+          would have cost nothing, because nothing was built on top yet.
+          <strong>Prove the feel before you buy the art.</strong>
+        </p>
+      </div>
+    
+      <p>
+        The rest follows: art after feel, because art is expensive and would be redone if the feel
+        changed. Content after art, because you cannot judge a level's readability with rectangles.
+        Danger after content, because hazards need somewhere to be. Powers after danger, because a
+        spell needs something to be used against. The shell after gameplay, because a menu wrapping a
+        game that is not fun is wasted work. Polish last, because it is the only thing safe to cut.
+      </p>
+    
+      <h3>Decide your numbers before you build</h3>
+      <p>
+        Every tunable value in this game lives in one file, and each records <em>why</em> it has that
+        value. You do not need to read code to steal this: keep a <strong>one-page tuning sheet</strong>
+        — every number that affects how the game feels, in one place, each with a reason.
+      </p>
+      <p>
+        Then arguments become concrete. "Jumps feel floaty" becomes "gravity is 3600, should it be
+        4000?" And six months later you know why a number is 0.1 and not 0.15.
+      </p>
+      <p>
+        At minimum your sheet needs: gravity, jump strength, run speed, forgiveness windows, hitbox
+        size, maximum health, damage values, tile size, and your jump envelope.
+      </p>
+    </section>
+    
+    <section id="reading">
+      <p class="kicker">19</p>
+      <h2>Where to read next</h2>
+    
+      <h3>Design</h3>
+      <ul>
+        <li><strong>Steve Swink, <em>Game Feel</em></strong> — the book on why controls feel good.
+          Directly relevant: this whole project turns on jump arcs and forgiveness windows.</li>
+        <li><strong>Jesse Schell, <em>The Art of Game Design</em></strong> — the standard broad text.</li>
+        <li><a href="https://www.youtube.com/@GMTK"><strong>Game Maker's Toolkit</strong></a> — start
+          with the platformer-feel videos; coyote time and buffering are covered visually.</li>
+        <li><strong>GDC talks on Celeste and Spelunky</strong> — Celeste for jump tuning and
+          forgiveness, Spelunky for procedural levels that stay fair. Exactly the problems here.</li>
+      </ul>
+    
+      <h3>Technical, for a designer who wants to follow the conversation</h3>
+      <ul>
+        <li><a href="https://gafferongames.com/post/fix_your_timestep/"><strong>Fix Your Timestep!</strong></a>
+          — the canonical explanation of the idea in section 02. The first part is readable by anyone.</li>
+        <li><a href="https://phaser.io/"><strong>Phaser</strong></a> — the framework here; the examples
+          are the real documentation.</li>
+        <li><a href="https://developer.mozilla.org/en-US/docs/Games"><strong>MDN Game Development</strong></a></li>
+        <li><a href="https://www.redblobgames.com/"><strong>Red Blob Games</strong></a> — the clearest
+          technical writing in games.</li>
+        <li><a href="https://www.mapeditor.org/"><strong>Tiled</strong></a> — free, standard, and a
+          designer's tool rather than a programmer's. Learn it.</li>
+      </ul>
+    
+      <h3>Art, assets and licensing</h3>
+      <ul>
+        <li><a href="https://www.davidrevoy.com/"><strong>David Revoy's tutorials</strong></a> — the
+          Pepper&amp;Carrot artist, on Krita.</li>
+        <li><a href="https://kenney.nl/"><strong>Kenney</strong></a> — enormous, genuinely free, good
+          for placeholders that are not rectangles.</li>
+        <li><a href="https://opengameart.org/"><strong>OpenGameArt</strong></a> — varied; check each
+          licence individually.</li>
+        <li><a href="https://creativecommons.org/licenses/"><strong>Creative Commons</strong></a> —
+          worth twenty minutes before building on someone's art.</li>
+      </ul>
+    </section>
+    
+    <section id="short">
+      <p class="kicker">The shortest version</p>
+      <h2>Eight things</h2>
+      <ul class="check">
+        <li>Draw your state machine. It is your animation list.</li>
+        <li>Write your tuning sheet before you build.</li>
+        <li>Build the feel first, in grey rectangles.</li>
+        <li>Measure the jump. Design every level against that measurement.</li>
+        <li>Make each milestone playable, and play it.</li>
+        <li>Keep the rules separate from the picture.</li>
+        <li>Do not cut audio and the shell — everyone does, and it shows.</li>
+        <li>Sort out licences before you build on someone's work.</li>
+      </ul>
+    </section>
+    
+    <footer>
+      <h3>The game this came from</h3>
+      <p>
+        Pepper&amp;Carrot Runner is a browser reimagining of an unfinished 2016 Java game by
+        WinterLicht, set in David Revoy's CC-BY webcomic universe, with game art by Anna Dorokhova.
+        Every measurement on this page was taken from the running game.
+      </p>
+      <p>
+        <a class="cta" href="https://wwstorymode.github.io/pepper-carrot-runner/">▶ Play it</a>
+        <a class="cta" href="https://github.com/WWStoryMode/pepper-carrot-runner">Source &amp; full docs</a>
+      </p>
+      <p style="margin-top:22px;font-size:14px">
+        Add <code>?debug=1</code> to the game's URL to see hitboxes, platform edges, state, velocity
+        and the measured arc of your last jump. Almost every idea on this page becomes visible.
+      </p>
+    </footer>
+  </body>
+</html>
