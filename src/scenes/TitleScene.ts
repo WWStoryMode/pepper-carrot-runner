@@ -25,6 +25,11 @@ export class TitleScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(COLORS.black);
 
+    // The scene instance outlives its display list, and the clock that would
+    // have disarmed this is shut down with the scene. Leaving it armed would
+    // let a later visit erase a save on the first tap, with no second chance.
+    this.resetArmed = false;
+
     this.add
       .tileSprite(0, 0, width, height, BACKGROUND_TEXTURE)
       .setOrigin(0)

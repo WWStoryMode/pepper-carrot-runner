@@ -97,6 +97,11 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   private buildRows(): void {
+    // Built into a local array and assigned at the end, because Phaser reuses
+    // the scene *instance* across visits — only the display list is destroyed
+    // on shutdown. Appending to the existing array would leave `refresh` writing
+    // to Text objects whose canvas is already gone.
+    const rows: Row[] = [];
     const { width } = this.scale;
     const left = Math.max(60, width / 2 - 460);
     // Right-aligned, so the description never has to fight the button for room.
@@ -150,9 +155,11 @@ export class KitchenScene extends Phaser.Scene {
       button.on('pointerout', () => button.setFillStyle(0x432b2b, 1));
       button.on('pointerup', () => this.tryBrew(def));
 
-      this.rows.push({ def, icon, name, detail, button, buttonLabel });
+      rows.push({ def, icon, name, detail, button, buttonLabel });
       y += 130;
     }
+
+    this.rows = rows;
   }
 
   private tryBrew(def: UpgradeDef): void {

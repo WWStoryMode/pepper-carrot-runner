@@ -18,8 +18,22 @@ await send(s, 'Runtime.enable');
 
 const checks = [];
 const check = (n, ok, d='') => { checks.push(ok); console.log(`${ok?'PASS':'FAIL'}  ${n}${d?`  — ${d}`:''}`); };
-const wait = async (expr, label, n=100) => { for (let i=0;i<n;i++){ try { if (await ev(s, `return !!(${expr});`)) return true; } catch {} await new Promise(r=>setTimeout(r,200)); } throw new Error('timed out: '+label); };
+// Collect anything the page throws, so a crash inside create() is reported as
+// what it is rather than as an unexplained timeout waiting for the scene.
+const errors = [];
+s.addEventListener('message', e => {
+  const m = JSON.parse(e.data);
+  if (m.method === 'Runtime.exceptionThrown') {
+    errors.push(String(m.params.exceptionDetails.exception?.description ?? '').split('\n')[0]);
+  }
+});
 
+const wait = async (expr, label, n=50) => { for (let i=0;i<n;i++){ try { if (await ev(s, `return !!(${expr});`)) return true; } catch {} await new Promise(r=>setTimeout(r,200)); } throw new Error(`timed out: ${label}${errors.length ? ` — page threw: ${errors[errors.length-1]}` : ''}`); };
+
+// Start from a fresh page: a previous run leaves the tab in whatever scene it
+// finished in, and a rebuild changes the bundle hash under it.
+await send(s, 'Page.enable');
+await send(s, 'Page.reload', { ignoreCache: true });
 await wait(`globalThis.__pcr?.scene.getScene('Title')?.scene.isActive()`, 'title');
 
 // Plant a save with enough ingredients to brew everything once.
@@ -29,9 +43,23 @@ await ev(s, `localStorage.setItem('pcr.save.v1', JSON.stringify({
   upgrades: {}, stats: {deaths: 4, kills: 11, potions: 30, ingredients: 25}
 })); return 1;`);
 
-await ev(s, `globalThis.__pcr.scene.start('Kitchen'); return 1;`);
-await wait(`globalThis.__pcr.scene.getScene('Kitchen')?.scene.isActive()`, 'kitchen');
-await new Promise(r=>setTimeout(r,700));
+// Go through the scene's own ScenePlugin, not the manager: SceneManager.start
+// leaves the caller running, so the manager route never shuts a scene down and
+// would not exercise a real revisit.
+const goto = async (from, to) => {
+  await ev(s, `globalThis.__pcr.scene.getScene('${from}').scene.start('${to}'); return 1;`);
+  await wait(`globalThis.__pcr.scene.getScene('${to}')?.scene.isActive()`, to.toLowerCase());
+  await new Promise(r=>setTimeout(r,700));
+};
+
+await goto('Title', 'Kitchen');
+
+// Leaving and coming back is its own case: Phaser reuses the scene instance but
+// destroys its display list, so anything create() appends to rather than rebuilds
+// is a stale GameObject the second time through.
+await goto('Kitchen', 'Title');
+await goto('Title', 'Kitchen');
+check('surviving a second visit to the kitchen', errors.length === 0, errors[0] ?? '');
 
 const rows = await ev(s, `const k = globalThis.__pcr.scene.getScene('Kitchen');
   return k.rows.map(r => ({ id: r.def.id, label: r.buttonLabel.text }));`);
@@ -54,7 +82,7 @@ check('brewing raised Vitality', after.upgrades.vitality === 1, JSON.stringify(a
 check('brewing spent 10 ingredients', after.ingredients['ingredient_sour-1'] === 2, String(after.ingredients['ingredient_sour-1']));
 
 // And the run must actually feel it.
-await ev(s, `globalThis.__pcr.scene.start('Game'); return 1;`);
+await ev(s, `globalThis.__pcr.scene.getScene('Kitchen').scene.start('Game'); return 1;`);
 await wait(`globalThis.__pcr.scene.getScene('Game')?.runner`, 'game');
 const hp = await ev(s, `const g = globalThis.__pcr.scene.getScene('Game'); return { max: g.runner.maxHealth, health: g.runner.health };`);
 check('the extra heart reaches the run', hp.max === 6 && hp.health === 6, JSON.stringify(hp));
