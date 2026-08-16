@@ -1,15 +1,18 @@
 import Phaser from 'phaser';
 import { ATLAS_KEY, registerAnimations } from '@/art/animations';
 import { COLORS, DESIGN_HEIGHT, DESIGN_WIDTH } from '@/config/display';
+import { tilesetTextureKey } from '@/world/ChunkView';
+import type { LevelData } from '@/world/types';
 
 export const BACKGROUND_TEXTURE = 'testbg';
+export const GROUND_TEXTURE = 'ground';
+export const LEVELS_KEY = 'levels';
 
 /**
- * Loads the generated art and registers animations.
+ * Loads the generated art and level data, then registers animations.
  *
- * Everything here comes from `public/art/`, produced by `scripts/pack-atlas.ts`
- * — which runs automatically before `dev` and `build`, so a fresh checkout never
- * has to know it exists.
+ * Everything comes from `public/art/`, produced by `scripts/pack-atlas.ts` and
+ * `scripts/build-levels.ts`, which run automatically before `dev` and `build`.
  */
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -21,6 +24,21 @@ export class PreloadScene extends Phaser.Scene {
 
     this.load.multiatlas(ATLAS_KEY, 'art/atlas.json', 'art');
     this.load.image(BACKGROUND_TEXTURE, 'art/testbg.webp');
+    this.load.image(GROUND_TEXTURE, 'art/ground.webp');
+    this.load.json(LEVELS_KEY, 'art/levels.json');
+
+    // The tileset list lives inside levels.json, so the spritesheets can only
+    // be queued once it has arrived. Files added during a load join the same
+    // batch, so this still completes before `create`.
+    this.load.once(`filecomplete-json-${LEVELS_KEY}`, () => {
+      const data = this.cache.json.get(LEVELS_KEY) as LevelData;
+      for (const tileset of data.tilesets) {
+        this.load.spritesheet(tilesetTextureKey(tileset.name), `art/${tileset.image}`, {
+          frameWidth: tileset.tileWidth,
+          frameHeight: tileset.tileHeight,
+        });
+      }
+    });
   }
 
   create(): void {

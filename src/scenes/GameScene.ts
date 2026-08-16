@@ -1,16 +1,21 @@
 import Phaser from 'phaser';
 import { PLAYER_SCREEN_X } from '@/config/constants';
 import { AUTOPILOT, COLORS, DEBUG, START_X } from '@/config/display';
-import { shouldJump } from '@/sim/autopilot';
 import { DebugOverlay } from '@/debug/DebugOverlay';
 import { PlayerView } from '@/entities/PlayerView';
-import { TEST_LEVEL, TEST_LEVEL_END, TEST_LEVEL_START } from '@/levels/testLevel';
-import { BACKGROUND_TEXTURE } from '@/scenes/PreloadScene';
+import { Hud, scoreOf } from '@/hud/Hud';
+import { loadSave, saveRun } from '@/save/store';
+import { shouldJump } from '@/sim/autopilot';
 import { FixedStepper } from '@/sim/FixedStepper';
 import { Runner } from '@/sim/Runner';
-import type { RunnerSnapshot } from '@/sim/types';
+import type { Platform, RunnerSnapshot } from '@/sim/types';
+import { BACKGROUND_TEXTURE, GROUND_TEXTURE, LEVELS_KEY } from '@/scenes/PreloadScene';
+import { ChunkStream, GROUND_Y } from '@/world/ChunkStream';
+import { ChunkView } from '@/world/ChunkView';
+import { Rng } from '@/world/rng';
+import type { LevelData } from '@/world/types';
 
-/** Screen height at which the player's feet sit before the camera starts to follow. */
+/** Screen height at which the player's feet sit. Matches the original's 513. */
 const FEET_SCREEN_Y = 520;
 
 /**
@@ -34,30 +39,37 @@ const CAMERA_STIFFNESS = 7;
  */
 const BACKGROUND_PARALLAX = 0.35;
 
+/** How far the ground strip extends below its surface. */
+const GROUND_DEPTH = 400;
+
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 /**
  * Gameplay scene.
  *
- * Pepper and Carrot are drawn from the atlas; platforms are still grey boxes,
- * because their real appearance comes from TMX tile layers in M3 and inventing
- * placeholder tile art now would only be thrown away.
- *
- * The scene reads `src/sim/` and never writes to it, which is what lets the
- * physics be tested without a browser.
+ * Chunks of the original's level data stream past endlessly; Pepper and Carrot
+ * are drawn from the atlas. The scene reads `src/sim/` and never writes to it,
+ * which is what lets the physics be tested without a browser.
  */
 export class GameScene extends Phaser.Scene {
   private runner!: Runner;
   private stepper!: FixedStepper;
-  private shapes!: Phaser.GameObjects.Graphics;
   private overlay!: DebugOverlay;
   private banner!: Phaser.GameObjects.Text;
   private player!: PlayerView;
   private backdrop!: Phaser.GameObjects.TileSprite;
+  private ground!: Phaser.GameObjects.TileSprite;
+  private hud!: Hud;
+
+  private levels!: LevelData;
+  private stream!: ChunkStream;
+  private chunks!: ChunkView;
+  private platforms: readonly Platform[] = [];
 
   private previous!: RunnerSnapshot;
   private cameraFocusY = 0;
   private cameraAnchorY = 0;
+  private recorded = false;
 
   // Measured per jump so the debug readout can confirm the arc against the
   // 325 px / 0.85 s figures the original produces.
@@ -72,6 +84,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(COLORS.black);
+    this.levels = this.cache.json.get(LEVELS_KEY) as LevelData;
 
     this.backdrop = this.add
       .tileSprite(0, 0, this.scale.width, this.scale.height, BACKGROUND_TEXTURE)
@@ -83,12 +96,19 @@ export class GameScene extends Phaser.Scene {
       .setTileScale(2.6)
       .setTint(0x8b83a6);
 
+    // The floor the level data assumes exists — see ChunkStream.GROUND_Y.
+    this.ground = this.add
+      .tileSprite(0, -GROUND_Y, this.scale.width, GROUND_DEPTH, GROUND_TEXTURE)
+      .setOrigin(0, 0)
+      .setDepth(-50);
+
     this.runner = new Runner();
     this.stepper = new FixedStepper();
-    this.shapes = this.add.graphics();
-    this.shapes.setDepth(0);
+    this.stream = new ChunkStream(this.levels, new Rng(Date.now() >>> 0));
+    this.chunks = new ChunkView(this, this.levels);
     this.player = new PlayerView(this);
     this.overlay = new DebugOverlay(this, DEBUG);
+    this.hud = new Hud(this, loadSave().bestDistance);
 
     this.banner = this.add
       .text(this.scale.width / 2, 150, '', {
@@ -99,7 +119,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setDepth(102);
+      .setDepth(202);
 
     this.bindInput();
     this.restart();
@@ -128,8 +148,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    this.runner.reset(START_X ?? TEST_LEVEL_START.x, TEST_LEVEL_START.y);
+    const startX = START_X ?? 0;
+
+    this.runner.reset(startX, GROUND_Y);
     this.stepper.reset();
+    this.chunks.clear();
+    this.stream.reset(startX);
+
+    const { spawned } = this.stream.update(this.runner.x);
+    for (const chunk of spawned) this.chunks.spawn(chunk);
+    this.platforms = this.stream.getPlatforms(this.runner.x);
+
     this.previous = this.runner.snapshot();
     this.cameraFocusY = this.runner.y;
     this.cameraAnchorY = this.runner.y;
@@ -137,18 +166,22 @@ export class GameScene extends Phaser.Scene {
     this.lastAirtime = 0;
     this.airtime = 0;
     this.launchHeight = this.runner.y;
+    this.recorded = false;
+    this.hud.setBest(loadSave().bestDistance);
     this.banner.setText('');
   }
 
   override update(_time: number, delta: number): void {
     const dtSeconds = delta / 1000;
 
+    this.streamChunks();
+
     let previous = this.runner.snapshot();
 
     const steps = this.stepper.advance(dtSeconds, (dt) => {
       previous = this.runner.snapshot();
-      if (AUTOPILOT && shouldJump(this.runner, TEST_LEVEL)) this.runner.jump();
-      this.runner.step(dt, TEST_LEVEL);
+      if (AUTOPILOT && shouldJump(this.runner, this.platforms)) this.runner.jump();
+      this.runner.step(dt, this.platforms);
       this.measureArc(dt);
     });
 
@@ -160,10 +193,10 @@ export class GameScene extends Phaser.Scene {
     const worldY = lerp(this.previous.y, current.y, alpha);
 
     this.updateCamera(worldX, worldY, dtSeconds);
-    this.renderPlatforms();
 
     this.player.update(worldX, worldY, current.state);
     this.player.setDead(this.runner.isDead);
+    this.hud.update(this.runner.distance);
 
     this.overlay.draw(
       {
@@ -176,13 +209,26 @@ export class GameScene extends Phaser.Scene {
         fps: this.game.loop.actualFps,
         peakHeight: this.peakHeight,
         lastAirtime: this.lastAirtime,
+        chunks: this.stream.chunkCount,
+        sprites: this.chunks.activeSpriteCount,
+        pool: this.chunks.poolSize,
       },
       worldX,
       -worldY,
-      TEST_LEVEL,
+      this.platforms,
     );
 
     this.updateBanner();
+  }
+
+  /** Spawn and retire chunks, and refresh the collision set. */
+  private streamChunks(): void {
+    const { spawned, retired } = this.stream.update(this.runner.x);
+
+    for (const chunk of retired) this.chunks.retire(chunk);
+    for (const chunk of spawned) this.chunks.spawn(chunk);
+
+    this.platforms = this.stream.getPlatforms(this.runner.x);
   }
 
   /**
@@ -215,7 +261,6 @@ export class GameScene extends Phaser.Scene {
   private updateCamera(worldX: number, worldY: number, dt: number): void {
     if (this.runner.isGrounded) this.cameraAnchorY = worldY;
 
-    // Chase only if the player is about to leave the view.
     let target = this.cameraAnchorY;
     if (worldY > target + CAMERA_MAX_ABOVE) target = worldY - CAMERA_MAX_ABOVE;
     else if (worldY < target - CAMERA_MAX_BELOW) target = worldY + CAMERA_MAX_BELOW;
@@ -229,42 +274,26 @@ export class GameScene extends Phaser.Scene {
 
     this.backdrop.tilePositionX = camera.scrollX * BACKGROUND_PARALLAX;
     this.backdrop.tilePositionY = camera.scrollY * BACKGROUND_PARALLAX;
-  }
 
-  /**
-   * Platforms stay grey-boxed. The real tiles are painted from TMX layers in
-   * M3, and inventing placeholder tile art now would only have to be thrown
-   * away.
-   */
-  private renderPlatforms(): void {
-    const g = this.shapes;
-    g.clear();
-
-    const camera = this.cameras.main;
-    const left = camera.scrollX - 200;
-    const right = camera.scrollX + camera.width + 200;
-
-    for (const platform of TEST_LEVEL) {
-      if (platform.x + platform.width < left || platform.x > right) continue;
-
-      // Y-up world → Y-down screen.
-      const top = -platform.y;
-      g.fillStyle(0x3b2440, 1);
-      g.fillRect(platform.x, top, platform.width, platform.height);
-      g.fillStyle(0x8e6a8a, 1);
-      g.fillRect(platform.x, top, platform.width, 8);
-    }
+    // One world-space strip, repositioned to cover the view and offset by the
+    // same amount, so the texture reads as locked to the world.
+    this.ground.setPosition(camera.scrollX, -GROUND_Y);
+    this.ground.setSize(camera.width, GROUND_DEPTH);
+    this.ground.tilePositionX = camera.scrollX;
   }
 
   private updateBanner(): void {
-    if (this.runner.isDead) {
-      this.banner.setText('you fell\n\ntap or press R to restart');
+    if (!this.runner.isDead) {
+      this.banner.setText('');
       return;
     }
-    if (this.runner.x >= TEST_LEVEL_END) {
-      this.banner.setText('course complete\n\ntap or press R to restart');
-      return;
+
+    if (!this.recorded) {
+      this.recorded = true;
+      const best = saveRun(this.runner.distance, scoreOf(this.runner.distance));
+      this.hud.setBest(best.bestDistance);
     }
-    this.banner.setText('');
+
+    this.banner.setText('tap or press R to restart');
   }
 }
