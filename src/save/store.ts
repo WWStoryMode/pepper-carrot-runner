@@ -20,6 +20,7 @@ export interface SaveData {
   readonly bestDistance: number;
   readonly bestScore: number;
   readonly runs: number;
+  readonly muted: boolean;
 }
 
 const EMPTY: SaveData = {
@@ -27,6 +28,7 @@ const EMPTY: SaveData = {
   bestDistance: 0,
   bestScore: 0,
   runs: 0,
+  muted: false,
 };
 
 function migrate(raw: Partial<SaveData> & { version?: number }): SaveData {
@@ -36,6 +38,7 @@ function migrate(raw: Partial<SaveData> & { version?: number }): SaveData {
     bestDistance: Number(raw.bestDistance ?? 0),
     bestScore: Number(raw.bestScore ?? 0),
     runs: Number(raw.runs ?? 0),
+    muted: raw.muted === true,
   };
 }
 
@@ -53,22 +56,30 @@ export function loadSave(): SaveData {
   }
 }
 
+function persist(data: SaveData): SaveData {
+  try {
+    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // Storage being unavailable is not worth interrupting a run over.
+  }
+  return data;
+}
+
 export function saveRun(distance: number, score: number): SaveData {
   const previous = loadSave();
-  const next: SaveData = {
+
+  return persist({
+    ...previous,
     version: CURRENT_VERSION,
     bestDistance: Math.max(previous.bestDistance, distance),
     bestScore: Math.max(previous.bestScore, score),
     runs: previous.runs + 1,
-  };
+  });
+}
 
-  try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Storage being unavailable is not worth interrupting a run over.
-  }
-
-  return next;
+/** Mute is a preference, so it survives a data reset deliberately. */
+export function setMuted(muted: boolean): SaveData {
+  return persist({ ...loadSave(), muted });
 }
 
 export function resetSave(): void {

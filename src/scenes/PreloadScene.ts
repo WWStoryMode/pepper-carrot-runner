@@ -43,7 +43,7 @@ export class PreloadScene extends Phaser.Scene {
 
   create(): void {
     registerAnimations(this.anims);
-    this.scene.start('Game');
+    this.scene.start('Title');
   }
 
   private showProgress(): void {

@@ -101,8 +101,15 @@ export class AbilitySystem {
   /** Multiplier on the runner's forward speed, driven by Time Distortion. */
   speedFactor = 1;
 
+  /** Enemies killed by spells, cumulative. The scene diffs it for feedback. */
+  private killCount = 0;
+
   get runningSlot(): AbilitySlot | null {
     return this.active;
+  }
+
+  get kills(): number {
+    return this.killCount;
   }
 
   get activeEffects(): readonly AbilityEffect[] {
@@ -116,6 +123,7 @@ export class AbilitySystem {
     this.charge = null;
     this.effects = [];
     this.speedFactor = 1;
+    this.killCount = 0;
   }
 
   isReady(slot: AbilitySlot): boolean {
@@ -186,6 +194,12 @@ export class AbilitySystem {
     if (def.duration > 0 && this.elapsed >= def.duration) this.finish();
   }
 
+  private slay(entity: SimEntity): void {
+    if (!entity.alive) return;
+    entity.alive = false;
+    this.killCount += 1;
+  }
+
   private finish(): void {
     this.active = null;
     this.elapsed = 0;
@@ -209,7 +223,7 @@ export class AbilitySystem {
       if (entity.kind !== 'enemy' || !entity.alive) continue;
       if (Math.abs(entity.x - x) > half + entity.halfWidth) continue;
       if (Math.abs(entity.y - y) > half + entity.halfHeight) continue;
-      entity.alive = false;
+      this.slay(entity);
     }
 
     this.effects.push({ kind: 'sweep', x, y, progress: this.progress() });
@@ -273,7 +287,7 @@ export class AbilitySystem {
       }
 
       const victim = charge.targets[charge.index];
-      if (victim !== undefined) victim.alive = false;
+      if (victim !== undefined) this.slay(victim);
 
       charge.index += 1;
       charge.fromX = charge.x;
@@ -307,7 +321,7 @@ export class AbilitySystem {
     for (const entity of entities) {
       if (entity.kind !== 'enemy' || !entity.alive) continue;
       if (distanceTo(entity, x, y) > TIME_AURA_RADIUS + entity.halfWidth) continue;
-      entity.alive = false;
+      this.slay(entity);
     }
 
     this.effects.push({ kind: 'clock', x, y, progress: this.progress() });
@@ -323,7 +337,7 @@ export class AbilitySystem {
       if (distanceTo(entity, x, y) > HOLE_RADIUS) continue;
 
       if (entity.kind === 'enemy' && entity.alive) {
-        entity.alive = false;
+        this.slay(entity);
         continue;
       }
 
