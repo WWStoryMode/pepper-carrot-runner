@@ -81,8 +81,11 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.muteLabel = this.makeSetting(width / 2 - 130, height - 62, () => this.toggleMute());
-    this.resetLabel = this.makeSetting(width / 2 + 130, height - 62, () => this.resetProgress());
+    this.makeSetting(width / 2 - 260, height - 62, () => this.scene.start('Kitchen')).setText(
+      'the kitchen',
+    );
+    this.muteLabel = this.makeSetting(width / 2, height - 62, () => this.toggleMute());
+    this.resetLabel = this.makeSetting(width / 2 + 240, height - 62, () => this.resetProgress());
 
     this.refreshSettings();
     this.bindStart();
@@ -147,6 +150,13 @@ export class TitleScene extends Phaser.Scene {
 
     this.input.keyboard?.on('keydown-SPACE', start);
     this.input.keyboard?.on('keydown-ENTER', start);
-    this.input.on('pointerdown', start);
+    this.input.keyboard?.on('keydown-K', () => this.scene.start('Kitchen'));
+
+    // Buttons handle their own presses on pointerup; a bare tap on the
+    // background starts a run. Acting on pointerdown here would fire first and
+    // swallow every button on the screen.
+    this.input.on('pointerup', (_p: Phaser.Input.Pointer, over: unknown[]) => {
+      if (over.length === 0) start();
+    });
   }
 }

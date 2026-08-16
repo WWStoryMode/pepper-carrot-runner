@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { COLORS, designSizeFor } from '@/config/display';
 import { GameScene } from '@/scenes/GameScene';
+import { KitchenScene } from '@/scenes/KitchenScene';
 import { PreloadScene } from '@/scenes/PreloadScene';
 import { TitleScene } from '@/scenes/TitleScene';
 
@@ -76,7 +77,7 @@ const config: Phaser.Types.Core.GameConfig = {
   input: {
     gamepad: true,
   },
-  scene: [PreloadScene, TitleScene, GameScene],
+  scene: [PreloadScene, TitleScene, KitchenScene, GameScene],
 };
 
 const game = new Phaser.Game(config);

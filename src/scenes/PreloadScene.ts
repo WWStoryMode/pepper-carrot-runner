@@ -6,6 +6,7 @@ import type { LevelData } from '@/world/types';
 
 export const BACKGROUND_TEXTURE = 'testbg';
 export const GROUND_TEXTURE = 'ground';
+export const KITCHEN_TEXTURE = 'kitchen';
 export const LEVELS_KEY = 'levels';
 
 /**
@@ -25,6 +26,7 @@ export class PreloadScene extends Phaser.Scene {
     this.load.multiatlas(ATLAS_KEY, 'art/atlas.json', 'art');
     this.load.image(BACKGROUND_TEXTURE, 'art/testbg.webp');
     this.load.image(GROUND_TEXTURE, 'art/ground.webp');
+    this.load.image(KITCHEN_TEXTURE, 'art/kitchen.webp');
     this.load.json(LEVELS_KEY, 'art/levels.json');
 
     // The tileset list lives inside levels.json, so the spritesheets can only

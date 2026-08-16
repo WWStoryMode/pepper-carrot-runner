@@ -18,6 +18,8 @@ export interface ContactResult {
   readonly ingredients: SimEntity[];
   readonly hitHazard: boolean;
   readonly hitEnemy: boolean;
+  /** An enemy hit a ghost ward absorbed instead of health. */
+  readonly warded: number;
 }
 
 const EMPTY: ContactResult = {
@@ -27,6 +29,7 @@ const EMPTY: ContactResult = {
   ingredients: [],
   hitHazard: false,
   hitEnemy: false,
+  warded: 0,
 };
 
 function overlaps(runner: Runner, entity: SimEntity): boolean {
@@ -57,6 +60,7 @@ export function resolveContacts(runner: Runner, entities: readonly SimEntity[]):
 
   let damaged = 0;
   let healed = 0;
+  let warded = 0;
   let hitHazard = false;
   let hitEnemy = false;
   const potions: SimEntity[] = [];
@@ -81,6 +85,12 @@ export function resolveContacts(runner: Runner, entities: readonly SimEntity[]):
         if (entity.touched) break;
         entity.touched = true;
         hitEnemy = true;
+
+        // A ward eats the whole contact rather than reducing it.
+        if (runner.consumeWard()) {
+          warded += 1;
+          break;
+        }
         damaged += ENEMY_DAMAGE;
         break;
       }
@@ -102,5 +112,5 @@ export function resolveContacts(runner: Runner, entities: readonly SimEntity[]):
   if (healed > 0) runner.heal(healed);
   if (damaged > 0) runner.damage(damaged, hitHazard ? 'hazard' : 'enemies');
 
-  return { damaged, healed, potions, ingredients, hitHazard, hitEnemy };
+  return { damaged, healed, potions, ingredients, hitHazard, hitEnemy, warded };
 }

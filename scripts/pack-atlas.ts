@@ -37,7 +37,7 @@ const PADDING = 2;
 const ALPHA_THRESHOLD = 0;
 
 /** Standalone textures: tiled or full-screen, so they stay out of the atlas. */
-const STANDALONE = ['testbg.png'];
+const STANDALONE = ['testbg.png', 'kitchen.png'];
 
 /** What we hand the packer: a box to place, carrying its sprite along. */
 interface PackedRect {

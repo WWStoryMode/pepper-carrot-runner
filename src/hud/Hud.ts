@@ -26,11 +26,15 @@ const HEART_SIZE = 62;
 const HEART_SCALE = 0.62;
 const HEART_GAP = 6;
 
+/** Highest level of Vitality, so the row is built once and revealed as earned. */
+const MAX_BONUS_HEARTS = 3;
+
 export class Hud {
   private readonly distanceText: Phaser.GameObjects.Text;
   private readonly bestText: Phaser.GameObjects.Text;
   private readonly hearts: Phaser.GameObjects.Image[] = [];
   private shownHealth = -1;
+  private shownMax = -1;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -57,8 +61,9 @@ export class Hud {
       .setShadow(0, 1, '#000000cc', 3);
 
     // Hearts run down the right edge, clear of the debug overlay on the left.
+    // Enough for the base five plus every level of Vitality.
     const step = HEART_SIZE * HEART_SCALE + HEART_GAP;
-    for (let i = 0; i < MAX_HEALTH; i += 1) {
+    for (let i = 0; i < MAX_HEALTH + MAX_BONUS_HEARTS; i += 1) {
       this.hearts.push(
         scene.add
           .image(scene.scale.width - 30, 30 + i * step, ATLAS_KEY, 'heart')
@@ -70,7 +75,7 @@ export class Hud {
     }
 
     this.layout();
-    this.update(0, MAX_HEALTH);
+    this.update(0, MAX_HEALTH, MAX_HEALTH);
   }
 
   /** Re-place after a viewport change; only the hearts depend on width. */
@@ -85,14 +90,19 @@ export class Hud {
     this.best = best;
   }
 
-  update(distance: number, health: number): void {
+  update(distance: number, health: number, maxHealth: number = MAX_HEALTH): void {
     this.distanceText.setText(`${metresOf(distance)} m`);
     this.bestText.setText(`best ${metresOf(this.best)} m`);
 
-    if (health === this.shownHealth) return;
+    if (health === this.shownHealth && maxHealth === this.shownMax) return;
     this.shownHealth = health;
+    this.shownMax = maxHealth;
 
     for (const [index, heart] of this.hearts.entries()) {
+      // Hearts beyond the current maximum are not shown at all, so the row
+      // grows as Vitality is brewed rather than sitting there greyed out.
+      heart.setVisible(index < maxHealth);
+
       const filled = index < health;
       // The original swapped the drawable and dimmed the lost hearts to 0.6.
       heart.setTexture(ATLAS_KEY, filled ? 'heart' : 'heart-disabled');

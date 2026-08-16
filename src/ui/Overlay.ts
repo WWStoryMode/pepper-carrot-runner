@@ -154,7 +154,9 @@ export class Overlay {
     const total =
       this.buttons.length * BUTTON_WIDTH + Math.max(0, this.buttons.length - 1) * BUTTON_GAP;
     let x = width / 2 - total / 2 + BUTTON_WIDTH / 2;
-    const y = height / 2 + 110;
+    // Clear of the body text, which grows downward and gained a line when the
+    // ingredient tally was added.
+    const y = height / 2 + 170;
 
     for (const button of this.buttons) {
       button.background.setPosition(x, y);
