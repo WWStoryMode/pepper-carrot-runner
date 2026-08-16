@@ -3,7 +3,7 @@
 An endless runner set in David Revoy's [Pepper&Carrot](https://www.peppercarrot.com/) universe —
 and a **worked example of how a 2D game is made**.
 
-### **[▶ Play it](https://wwstorymode.github.io/pepper-carrot-runner/)**   ·   **[📖 Read how it was built](docs/)**
+### **[▶ Play it](https://wwstorymode.github.io/pepper-carrot-runner/)**   ·   **[📖 Anatomy of a Runner](https://wwstorymode.github.io/pepper-carrot-runner/handbook/)**   ·   **[Full docs](docs/)**
 
 ---
 
@@ -18,7 +18,11 @@ the reasoning kept: why the physics run on their own clock, why milestone one ha
 all, why the jump had to be measured before a single level was designed.
 
 The written material is aimed at **game designers**. It contains no code to copy and requires no
-programming. → **[Start reading](docs/)**
+programming.
+
+- **[Anatomy of a Runner](https://wwstorymode.github.io/pepper-carrot-runner/handbook/)** — the
+  designer's field guide as a single illustrated page. Start here.
+- **[The full documents](docs/)** — six of them, including the origin story and the build log.
 
 ## Where it came from
 
@@ -108,6 +112,7 @@ src/scenes/     Phaser scenes
 src/entities/   views that draw simulation state
 src/world/      chunk streaming and the difficulty curve
 docs/           the learning material
+public/handbook/  the illustrated field guide, deployed alongside the game
 ```
 
 The split matters: `src/sim/` is the game, and it stays testable without a browser.

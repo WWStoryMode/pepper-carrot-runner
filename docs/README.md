@@ -5,6 +5,11 @@ Learning material built around a real, finished, playable game — not a toy exa
 **[▶ Play it first](https://wwstorymode.github.io/pepper-carrot-runner/)**, for two minutes. The
 rest makes more sense once you have died a few times.
 
+> **Prefer one illustrated page?**
+> **[Anatomy of a Runner](https://wwstorymode.github.io/pepper-carrot-runner/handbook/)** covers
+> documents 3–6 — the designer-facing material — with diagrams, in one place. The source for it
+> is [`public/handbook/`](../public/handbook/index.html).
+
 ## Who this is for
 
 **Game designers**, primarily. There is no code to copy and no programming to learn. Files are
