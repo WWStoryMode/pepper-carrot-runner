@@ -19,6 +19,8 @@ export interface DebugFrame {
   readonly chunks: number;
   readonly sprites: number;
   readonly pool: number;
+  readonly entities: number;
+  readonly health: number;
 }
 
 /**
@@ -107,7 +109,8 @@ export class DebugOverlay {
       `airtime  ${frame.lastAirtime.toFixed(3)} s`,
       `steps    ${frame.steps}`,
       `fps      ${frame.fps.toFixed(0)}`,
-      `chunks   ${frame.chunks}`,
+      `health   ${frame.health}`,
+      `chunks   ${frame.chunks}  entities ${frame.entities}`,
       // If `pool` keeps climbing over a long run, recycling is leaking.
       `sprites  ${frame.sprites} / pool ${frame.pool}`,
     ]);

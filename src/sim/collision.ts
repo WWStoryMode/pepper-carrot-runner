@@ -63,3 +63,46 @@ export function findLanding(
 
   return landing;
 }
+
+/**
+ * Find a platform face the body has just run into, or `null`.
+ *
+ * The original never did this: `WorldStage.processPlatforms` resolved Y only,
+ * so the player passed straight through the side of any raised shelf. Making
+ * faces solid turns those shelves into obstacles worth jumping.
+ *
+ * The test is **swept in X**: a face only counts if the body was not
+ * horizontally overlapping the platform before this step and is now. That is
+ * what keeps it from firing when the player rises up *through* a one-way
+ * platform — in that case the overlap already existed, and only the vertical
+ * relationship changed.
+ */
+export function findSideCollision(
+  previousX: number,
+  x: number,
+  feet: number,
+  halfWidth: number,
+  height: number,
+  platforms: readonly Platform[],
+): Platform | null {
+  for (const platform of platforms) {
+    if (platform.noSides === true) continue;
+
+    const top = platform.y;
+    const bottom = platform.y - platform.height;
+
+    // Standing on it, or clear above it, is not a side hit.
+    if (feet >= top - LANDING_TOLERANCE) continue;
+    // Entirely beneath it.
+    if (feet + height <= bottom) continue;
+
+    const wasOverlapping =
+      previousX + halfWidth > platform.x && previousX - halfWidth < platform.x + platform.width;
+    const isOverlapping =
+      x + halfWidth > platform.x && x - halfWidth < platform.x + platform.width;
+
+    if (!wasOverlapping && isOverlapping) return platform;
+  }
+
+  return null;
+}

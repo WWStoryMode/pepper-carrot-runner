@@ -6,12 +6,15 @@ import { PlayerView } from '@/entities/PlayerView';
 import { Hud, scoreOf } from '@/hud/Hud';
 import { loadSave, saveRun } from '@/save/store';
 import { shouldJump } from '@/sim/autopilot';
+import { resolveContacts } from '@/sim/entities';
 import { FixedStepper } from '@/sim/FixedStepper';
 import { Runner } from '@/sim/Runner';
-import type { Platform, RunnerSnapshot } from '@/sim/types';
+import type { DeathCause, Platform, RunnerSnapshot } from '@/sim/types';
 import { BACKGROUND_TEXTURE, GROUND_TEXTURE, LEVELS_KEY } from '@/scenes/PreloadScene';
 import { ChunkStream, GROUND_Y } from '@/world/ChunkStream';
 import { ChunkView } from '@/world/ChunkView';
+import { EntityView } from '@/world/EntityView';
+import { GroundView } from '@/world/GroundView';
 import { Rng } from '@/world/rng';
 import type { LevelData } from '@/world/types';
 
@@ -39,8 +42,13 @@ const CAMERA_STIFFNESS = 7;
  */
 const BACKGROUND_PARALLAX = 0.35;
 
-/** How far the ground strip extends below its surface. */
-const GROUND_DEPTH = 400;
+/** Wording for each way a run can end. */
+const DEATH_MESSAGE: Record<Exclude<DeathCause, null>, string> = {
+  pit: 'you fell',
+  crash: 'you hit a wall',
+  hazard: 'the poison got you',
+  enemies: 'out of hearts',
+};
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
@@ -58,7 +66,8 @@ export class GameScene extends Phaser.Scene {
   private banner!: Phaser.GameObjects.Text;
   private player!: PlayerView;
   private backdrop!: Phaser.GameObjects.TileSprite;
-  private ground!: Phaser.GameObjects.TileSprite;
+  private groundView!: GroundView;
+  private entityView!: EntityView;
   private hud!: Hud;
 
   private levels!: LevelData;
@@ -96,16 +105,12 @@ export class GameScene extends Phaser.Scene {
       .setTileScale(2.6)
       .setTint(0x8b83a6);
 
-    // The floor the level data assumes exists — see ChunkStream.GROUND_Y.
-    this.ground = this.add
-      .tileSprite(0, -GROUND_Y, this.scale.width, GROUND_DEPTH, GROUND_TEXTURE)
-      .setOrigin(0, 0)
-      .setDepth(-50);
-
     this.runner = new Runner();
     this.stepper = new FixedStepper();
     this.stream = new ChunkStream(this.levels, new Rng(Date.now() >>> 0));
     this.chunks = new ChunkView(this, this.levels);
+    this.groundView = new GroundView(this, GROUND_TEXTURE);
+    this.entityView = new EntityView(this);
     this.player = new PlayerView(this);
     this.overlay = new DebugOverlay(this, DEBUG);
     this.hud = new Hud(this, loadSave().bestDistance);
@@ -153,11 +158,13 @@ export class GameScene extends Phaser.Scene {
     this.runner.reset(startX, GROUND_Y);
     this.stepper.reset();
     this.chunks.clear();
+    this.entityView.clear();
+    this.groundView.clear();
     this.stream.reset(startX);
 
     const { spawned } = this.stream.update(this.runner.x);
     for (const chunk of spawned) this.chunks.spawn(chunk);
-    this.platforms = this.stream.getPlatforms(this.runner.x);
+    this.syncWorldViews();
 
     this.previous = this.runner.snapshot();
     this.cameraFocusY = this.runner.y;
@@ -182,6 +189,7 @@ export class GameScene extends Phaser.Scene {
       previous = this.runner.snapshot();
       if (AUTOPILOT && shouldJump(this.runner, this.platforms)) this.runner.jump();
       this.runner.step(dt, this.platforms);
+      resolveContacts(this.runner, this.stream.activeEntities);
       this.measureArc(dt);
     });
 
@@ -196,7 +204,8 @@ export class GameScene extends Phaser.Scene {
 
     this.player.update(worldX, worldY, current.state);
     this.player.setDead(this.runner.isDead);
-    this.hud.update(this.runner.distance);
+    this.entityView.update();
+    this.hud.update(this.runner.distance, this.runner.health);
 
     this.overlay.draw(
       {
@@ -212,6 +221,8 @@ export class GameScene extends Phaser.Scene {
         chunks: this.stream.chunkCount,
         sprites: this.chunks.activeSpriteCount,
         pool: this.chunks.poolSize,
+        entities: this.entityView.activeSpriteCount,
+        health: this.runner.health,
       },
       worldX,
       -worldY,
@@ -224,11 +235,19 @@ export class GameScene extends Phaser.Scene {
   /** Spawn and retire chunks, and refresh the collision set. */
   private streamChunks(): void {
     const { spawned, retired } = this.stream.update(this.runner.x);
+    if (spawned.length === 0 && retired.length === 0) return;
 
     for (const chunk of retired) this.chunks.retire(chunk);
     for (const chunk of spawned) this.chunks.spawn(chunk);
 
-    this.platforms = this.stream.getPlatforms(this.runner.x);
+    this.syncWorldViews();
+  }
+
+  /** Re-point the pooled views at whatever the stream now holds. */
+  private syncWorldViews(): void {
+    this.platforms = this.stream.getPlatforms();
+    this.groundView.sync(this.stream.ground);
+    this.entityView.sync(this.stream.activeEntities);
   }
 
   /**
@@ -274,12 +293,6 @@ export class GameScene extends Phaser.Scene {
 
     this.backdrop.tilePositionX = camera.scrollX * BACKGROUND_PARALLAX;
     this.backdrop.tilePositionY = camera.scrollY * BACKGROUND_PARALLAX;
-
-    // One world-space strip, repositioned to cover the view and offset by the
-    // same amount, so the texture reads as locked to the world.
-    this.ground.setPosition(camera.scrollX, -GROUND_Y);
-    this.ground.setSize(camera.width, GROUND_DEPTH);
-    this.ground.tilePositionX = camera.scrollX;
   }
 
   private updateBanner(): void {
@@ -294,6 +307,8 @@ export class GameScene extends Phaser.Scene {
       this.hud.setBest(best.bestDistance);
     }
 
-    this.banner.setText('tap or press R to restart');
+    const cause = this.runner.deathCause;
+    const reason = cause === null ? 'run over' : DEATH_MESSAGE[cause];
+    this.banner.setText(`${reason}\n\ntap or press R to restart`);
   }
 }

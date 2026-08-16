@@ -28,6 +28,14 @@ const OUT_DIR = join(root, 'public/art');
 /** Player depth in the original was 50; layers sort either side of it. */
 const PLAYER_DEPTH = 50;
 
+/**
+ * Tiles of clearance a gap needs either side of any raised platform.
+ *
+ * The single-jump arc is ~340 px ≈ 3.6 tiles, so four keeps the whole flight
+ * path clear of overhangs.
+ */
+const JUMP_CLEARANCE_TILES = 4;
+
 interface OutTile {
   readonly ts: number;
   readonly id: number;
@@ -162,6 +170,74 @@ function buildChunk(map: TmxMap, tilesetIndex: Map<string, number>) {
 }
 
 /**
+ * Column ranges where a hole may be punched in the floor.
+ *
+ * A gap must not appear under the chunk's own ground-level tiles — a bookshelf
+ * hanging over a void looks broken — nor under anything low enough to be
+ * stranded on the far side of it. Everything else is fair game.
+ *
+ * Both chunk edges are excluded too, so a gap never straddles a join, where the
+ * neighbouring chunk's content is unknown at authoring time.
+ */
+function findSafeWindows(
+  widthTiles: number,
+  platforms: readonly OutPlatform[],
+  entities: readonly OutEntity[],
+): { start: number; len: number }[] {
+  const blocked = new Array<boolean>(widthTiles).fill(false);
+
+  const block = (col: number): void => {
+    if (col >= 0 && col < widthTiles) blocked[col] = true;
+  };
+
+  for (const run of platforms) {
+    if (run.row === 0) {
+      // Row 0 sits flush with the floor; a hole under it would leave the
+      // shelf hanging over a void.
+      for (let i = -1; i <= run.len; i += 1) block(run.col + i);
+      continue;
+    }
+
+    // Anything higher is an obstacle to *jumping* the gap. A gap forces the
+    // player into the air, and the arc spans ~340 px — about 3.6 tiles — so a
+    // shelf anywhere near the take-off makes the pairing unclearable: jump and
+    // you hit the shelf, don't jump and you fall in. Found by an autopilot
+    // death at level5's overhang, not by reading the maps.
+    for (let i = -JUMP_CLEARANCE_TILES; i < run.len + JUMP_CLEARANCE_TILES; i += 1) {
+      block(run.col + i);
+    }
+  }
+
+  for (const entity of entities) {
+    if (entity.row > 1) continue;
+    block(entity.col - 1);
+    block(entity.col);
+    block(entity.col + 1);
+  }
+
+  // Margin at both ends.
+  block(0);
+  block(widthTiles - 1);
+
+  const windows: { start: number; len: number }[] = [];
+  let start = -1;
+
+  for (let col = 0; col < widthTiles; col += 1) {
+    if (!blocked[col]) {
+      if (start < 0) start = col;
+      continue;
+    }
+    if (start >= 0) {
+      windows.push({ start, len: col - start });
+      start = -1;
+    }
+  }
+  if (start >= 0) windows.push({ start, len: widthTiles - start });
+
+  return windows.filter((w) => w.len >= 2);
+}
+
+/**
  * Rate a chunk by what it throws at the player.
  *
  * Derived from the data rather than hand-assigned, so hand-authored chunks
@@ -234,6 +310,7 @@ async function main(): Promise<void> {
       widthTiles: map.width,
       heightTiles: map.height,
       difficulty: rateDifficulty(entities),
+      safeWindows: findSafeWindows(map.width, platforms, entities),
       tiles,
       platforms,
       entities,
@@ -257,8 +334,10 @@ async function main(): Promise<void> {
     const pickups = chunk.entities.filter(
       (e) => e.kind === 'potion' || e.kind === 'ingredient',
     ).length;
+    const widest = chunk.safeWindows.reduce((max, w) => Math.max(max, w.len), 0);
     console.log(
       `  ${chunk.name.padEnd(8)} difficulty ${String(chunk.difficulty).padStart(3)}` +
+        `  gapWindows ${String(chunk.safeWindows.length).padStart(2)} (widest ${String(widest).padStart(2)})` +
         `  tiles ${String(chunk.tiles.length).padStart(4)}` +
         `  platforms ${String(chunk.platforms.length).padStart(3)}` +
         `  enemies ${enemies}  hazards ${String(hazards).padStart(2)}  pickups ${pickups}`,

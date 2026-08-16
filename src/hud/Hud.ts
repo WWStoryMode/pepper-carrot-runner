@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { ATLAS_KEY } from '@/art/animations';
+import { MAX_HEALTH } from '@/config/constants';
 import { COLORS } from '@/config/display';
 
 /**
@@ -19,9 +21,16 @@ export const metresOf = (distance: number): number => Math.floor(distance / UNIT
 
 export const scoreOf = (distance: number): number => metresOf(distance) * SCORE_PER_METRE;
 
+/** Heart size in the atlas. */
+const HEART_SIZE = 62;
+const HEART_SCALE = 0.62;
+const HEART_GAP = 6;
+
 export class Hud {
   private readonly distanceText: Phaser.GameObjects.Text;
   private readonly bestText: Phaser.GameObjects.Text;
+  private readonly hearts: Phaser.GameObjects.Image[] = [];
+  private shownHealth = -1;
 
   constructor(scene: Phaser.Scene, private best: number) {
     this.distanceText = scene.add
@@ -44,15 +53,38 @@ export class Hud {
       .setDepth(200)
       .setShadow(0, 1, '#000000cc', 3);
 
-    this.update(0);
+    // Hearts run down the right edge, clear of the debug overlay on the left.
+    const step = HEART_SIZE * HEART_SCALE + HEART_GAP;
+    for (let i = 0; i < MAX_HEALTH; i += 1) {
+      this.hearts.push(
+        scene.add
+          .image(scene.scale.width - 30, 30 + i * step, ATLAS_KEY, 'heart')
+          .setOrigin(1, 0)
+          .setScale(HEART_SCALE)
+          .setScrollFactor(0)
+          .setDepth(200),
+      );
+    }
+
+    this.update(0, MAX_HEALTH);
   }
 
   setBest(best: number): void {
     this.best = best;
   }
 
-  update(distance: number): void {
+  update(distance: number, health: number): void {
     this.distanceText.setText(`${metresOf(distance)} m`);
     this.bestText.setText(`best ${metresOf(this.best)} m`);
+
+    if (health === this.shownHealth) return;
+    this.shownHealth = health;
+
+    for (const [index, heart] of this.hearts.entries()) {
+      const filled = index < health;
+      // The original swapped the drawable and dimmed the lost hearts to 0.6.
+      heart.setTexture(ATLAS_KEY, filled ? 'heart' : 'heart-disabled');
+      heart.setAlpha(filled ? 1 : 0.6);
+    }
   }
 }

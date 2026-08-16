@@ -20,8 +20,14 @@ function slab(x: number, width: number, top: number, height = TILE): Platform {
   return { x, y: top, width, height };
 }
 
+/**
+ * Floor, rather than an obstacle.
+ *
+ * `noSides` matches how the streamed world treats its own floor: the lip of a
+ * pit reads as a fall, not as a wall you crashed into.
+ */
 function ground(x: number, width: number): Platform {
-  return slab(x, width, 0, GROUND_DEPTH);
+  return { ...slab(x, width, 0, GROUND_DEPTH), noSides: true };
 }
 
 export const TEST_LEVEL: readonly Platform[] = [
@@ -40,10 +46,11 @@ export const TEST_LEVEL: readonly Platform[] = [
   slab(3480, 260, 260),
   slab(3910, 300, 390),
 
-  // Directly above the ledge below it: jumping from 390 peaks at 715, so the
-  // player passes up *through* this platform and lands on it coming down.
-  // The one-way test in `findLanding` is what makes that work.
-  slab(3910, 300, 700),
+  // A platform used to sit directly above the one at 390, to exercise passing
+  // up *through* a one-way surface. Once faces became solid that stopped being
+  // a test and started being a trap: the corridor between the two demands an
+  // arrival height of within a few pixels. One-way pass-through is covered
+  // directly by `findLanding` unit tests, which is where it belongs.
 
   // Long drop back to ground level.
   ground(4500, 700),

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { FIXED_DT, RUN_SPEED } from '@/config/constants';
-import { runAutopilot } from '@/sim/autopilot';
+import { FIXED_DT, GAP_MAX_TILES, GAP_START_DISTANCE, RUN_SPEED } from '@/config/constants';
+import { runAutopilot, shouldJump } from '@/sim/autopilot';
 import { Runner } from '@/sim/Runner';
 import { ChunkStream, GROUND_Y } from './ChunkStream';
 import { Rng } from './rng';
@@ -140,7 +140,7 @@ describe('streaming', () => {
 
     for (const x of [0, 5000, 50_000, 250_000]) {
       stream.update(x);
-      const platforms = stream.getPlatforms(x);
+      const platforms = stream.getPlatforms();
       const floor = platforms.find(
         (p) => p.y === GROUND_Y && p.x <= x && p.x + p.width >= x,
       );
@@ -149,10 +149,86 @@ describe('streaming', () => {
   });
 });
 
+describe('floor gaps', () => {
+  it('leaves the opening stretch unbroken', () => {
+    const stream = new ChunkStream(levels, new Rng(17));
+    stream.reset(0);
+    stream.update(0);
+
+    // Nothing before GAP_START_DISTANCE, so a first run always starts fair.
+    const early = stream.ground.filter((s) => s.x < GAP_START_DISTANCE);
+    for (let i = 1; i < early.length; i += 1) {
+      const previous = early[i - 1]!;
+      expect(early[i]!.x).toBeLessThanOrEqual(previous.x + previous.width + 1);
+    }
+  });
+
+  it('cuts holes into the floor further out', () => {
+    const stream = new ChunkStream(levels, new Rng(4));
+    stream.reset(0);
+
+    let sawHole = false;
+    for (let x = 0; x < 400_000 && !sawHole; x += 500) {
+      stream.update(x);
+      const segments = [...stream.ground].sort((a, b) => a.x - b.x);
+      for (let i = 1; i < segments.length; i += 1) {
+        const previous = segments[i - 1]!;
+        if (segments[i]!.x > previous.x + previous.width + 1) sawHole = true;
+      }
+    }
+
+    expect(sawHole).toBe(true);
+  });
+
+  it('keeps every gap inside the single-jump arc', () => {
+    const stream = new ChunkStream(levels, new Rng(88));
+    stream.reset(0);
+
+    const tileWidth = levels.tileWidth;
+    for (let x = 0; x < 400_000; x += 1000) {
+      stream.update(x);
+      const segments = [...stream.ground].sort((a, b) => a.x - b.x);
+      for (let i = 1; i < segments.length; i += 1) {
+        const previous = segments[i - 1]!;
+        const gap = segments[i]!.x - (previous.x + previous.width);
+        if (gap <= 1) continue;
+        expect(gap).toBeLessThanOrEqual(GAP_MAX_TILES * tileWidth);
+      }
+    }
+  });
+
+  it('never strands an entity over a hole', () => {
+    const stream = new ChunkStream(levels, new Rng(23));
+    stream.reset(0);
+
+    for (let x = 0; x < 200_000; x += 2000) {
+      stream.update(x);
+      const segments = [...stream.ground].sort((a, b) => a.x - b.x);
+
+      for (const entity of stream.activeEntities) {
+        // Only things at ground level could be stranded.
+        if (entity.y > levels.tileHeight * 2) continue;
+
+        const overHole = segments.every(
+          (s) => entity.x < s.x || entity.x > s.x + s.width,
+        );
+        const insideWindow =
+          entity.x >= segments[0]!.x &&
+          entity.x <= segments[segments.length - 1]!.x + segments[segments.length - 1]!.width;
+
+        if (insideWindow) expect(overHole).toBe(false);
+      }
+    }
+  });
+});
+
 describe('a long run', () => {
   /**
    * The five-minute soak from the milestone's exit criteria, headless.
    * Five minutes at 400 px/s is 120,000 world units — about 36 chunks.
+   *
+   * Driven by the autopilot: since side collision landed, simply running is no
+   * longer survivable, which is the entire point of the change.
    */
   it('survives five minutes without dying or stalling', () => {
     const stream = new ChunkStream(levels, new Rng(2026));
@@ -163,7 +239,9 @@ describe('a long run', () => {
     const steps = Math.round(300 / FIXED_DT);
     for (let i = 0; i < steps; i += 1) {
       stream.update(runner.x);
-      runner.step(FIXED_DT, stream.getPlatforms(runner.x));
+      const platforms = stream.getPlatforms();
+      if (shouldJump(runner, platforms)) runner.jump();
+      runner.step(FIXED_DT, platforms);
     }
 
     expect(runner.isDead).toBe(false);
@@ -182,7 +260,7 @@ describe('a long run', () => {
       const steps = Math.round(60 / FIXED_DT);
       for (let i = 0; i < steps; i += 1) {
         stream.update(runner.x);
-        const platforms = stream.getPlatforms(runner.x);
+        const platforms = stream.getPlatforms();
         runAutopilot(runner, platforms, Number.POSITIVE_INFINITY, FIXED_DT, 1);
       }
 

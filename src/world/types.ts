@@ -44,12 +44,20 @@ export interface ChunkEntity {
   readonly emitter?: string;
 }
 
+/** A column range where a hole may be punched in the floor. */
+export interface SafeWindow {
+  readonly start: number;
+  readonly len: number;
+}
+
 export interface ChunkData {
   readonly name: string;
   readonly widthTiles: number;
   readonly heightTiles: number;
   /** Derived from hazard and enemy content; higher is harder. */
   readonly difficulty: number;
+  /** Where a floor gap may be placed without stranding the chunk's content. */
+  readonly safeWindows: readonly SafeWindow[];
   readonly tiles: readonly ChunkTile[];
   readonly platforms: readonly ChunkPlatform[];
   readonly entities: readonly ChunkEntity[];

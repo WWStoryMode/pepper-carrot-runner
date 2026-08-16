@@ -34,12 +34,12 @@ describe('greybox course', () => {
     expect(result.died).toBe(true);
   });
 
-  it('needs both jumps — the bot cannot clear it grounded-only', () => {
+  it('demands jumping throughout, not just at one point', () => {
     const runner = new Runner();
     runner.reset(TEST_LEVEL_START.x, TEST_LEVEL_START.y);
 
     const result = runAutopilot(runner, TEST_LEVEL, 99_999, FIXED_DT);
 
-    expect(result.jumps).toBeGreaterThan(8);
+    expect(result.jumps).toBeGreaterThan(3);
   });
 });

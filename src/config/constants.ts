@@ -87,8 +87,58 @@ export const LANDING_TOLERANCE = 0.5;
 /**
  * Feet below this height are dead.
  *
- * The original clamped the player at `OFFSET_TO_GROUND` so pits were survivable
- * and only `obstacle=deadly` tiles could kill. An endless runner needs falling
- * to be a real failure, so pits are lethal here.
+ * The original clamped the player at `OFFSET_TO_GROUND`, so falling was
+ * impossible and only `obstacle=deadly` tiles could kill. Here the floor is
+ * synthetic and carries gaps, so this is reachable and a fall ends the run.
  */
 export const DEATH_PLANE = -600;
+
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+
+/** Hearts. The original's `new HitPoints(5)`. */
+export const MAX_HEALTH = 5;
+
+/**
+ * Damage from a deadly tile.
+ *
+ * The original gave these `damage = 6` against 5 hearts — instant death whatever
+ * your health. Kept, because it is what makes the green sludge read as lethal
+ * rather than as attrition.
+ */
+export const HAZARD_DAMAGE = 6;
+
+/** Damage from touching an enemy. */
+export const ENEMY_DAMAGE = 1;
+
+// ---------------------------------------------------------------------------
+// Entity sizes, from the source art
+// ---------------------------------------------------------------------------
+
+export const ENTITY_SIZES: Record<string, number> = {
+  fly: 95,
+  spider: 140,
+  potion: 70,
+  ingredient: 95,
+  hazard: 95,
+};
+
+// ---------------------------------------------------------------------------
+// Floor gaps
+// ---------------------------------------------------------------------------
+
+/** No gaps at all until the run has bedded in. */
+export const GAP_START_DISTANCE = 4_000;
+
+/** Distance at which gaps reach their widest. */
+export const GAP_FULL_DISTANCE = 40_000;
+
+/** Widest gap, in tiles. 3 × 95 = 285 px against a 340 px single-jump arc. */
+export const GAP_MAX_TILES = 3;
+
+/** Narrowest gap worth placing. */
+export const GAP_MIN_TILES = 2;
+
+/** Chance a given chunk gets a gap, once gaps have started. */
+export const GAP_CHANCE = 0.55;
