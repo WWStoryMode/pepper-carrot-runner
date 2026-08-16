@@ -246,6 +246,8 @@ export class ChunkStream {
     for (const active of this.active) {
       const chunk = this.data.chunks[active.index]!;
       for (const run of chunk.platforms) {
+        const bottom = run.row * tileHeight;
+
         platforms.push({
           x: active.x + run.col * tileWidth,
           // `row` counts from the bottom, and the collidable surface is the
@@ -253,6 +255,11 @@ export class ChunkStream {
           y: (run.row + 1) * tileHeight,
           width: run.len * tileWidth,
           height: tileHeight,
+          // Only things standing on the floor block you. A crate in your path
+          // is a fair obstacle; a shelf hanging in mid-air is not, because
+          // there is nothing to read at ground level that says "jump now".
+          // Playtest feedback after M4, where every raised shelf was solid.
+          ...(bottom > GROUND_Y ? { noSides: true } : {}),
         });
       }
     }

@@ -50,6 +50,8 @@ const WORLD: readonly AnimationDef[] = [
   { key: 'spider-death', frames: 6, frameDuration: 0.07, mode: 'once' },
   // Drawn behind every collectible in the original.
   { key: 'sparkling', frames: 9, frameDuration: 0.14, mode: 'loop' },
+  { key: 'blackhole', frames: 3, frameDuration: 0.12, mode: 'loop' },
+  { key: 'effect_acceleration', frames: 5, frameDuration: 0.06, mode: 'loop' },
 ];
 
 export const ALL_ANIMATIONS: readonly AnimationDef[] = [...PEPPER, ...CARROT, ...WORLD];
